@@ -17,6 +17,7 @@ class Program
         const string FINAL_SESSION_EXP = "0 0 16 ? * MON-FRI";
 
         var host = Host.CreateDefaultBuilder(args)
+            .UseWindowsService()
             .ConfigureServices((hostContext, services) =>
             {
                 string connectionString = hostContext.Configuration.GetSection("ConnectionStrings:DefaultConnection").Value.ToString();
@@ -36,7 +37,7 @@ class Program
                     q.AddJob<SessionUpdateJob>(sessionUpdateJob)
                         .AddTrigger(trigger =>
                         {
-                            //trigger.ForJob(sessionUpdateJob).WithSimpleSchedule(s => s.WithIntervalInMinutes(12)); 
+                            //trigger.ForJob(sessionUpdateJob).WithSimpleSchedule(s => s.WithIntervalInSeconds(10).RepeatForever()); 
                             trigger.ForJob(sessionUpdateJob).WithCronSchedule(SESSION_EXPRESSION); 
                         });
 

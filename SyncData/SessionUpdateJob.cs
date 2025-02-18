@@ -1,6 +1,5 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
-using Microsoft.Playwright;
 using OptionChain;
 using Quartz;
 
@@ -103,91 +102,66 @@ namespace SyncData
 
         public async Task<string> OpenPlayWrightBrowser()
         {
-            // Step 1: Use Playwright to extract cookies
-
             string finalCookie = "";
-            string url = "https://www.nseindia.com/option-chain?symbol=NIFTY";
+            string url = "https://www.nseindia.com/";
 
-            var playwright = await Playwright.CreateAsync();
-            await using var browser = await playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions { Headless = false });
-            
-            try
+            HttpClientHandler httpClientHandler = new HttpClientHandler();
+
+            // Enable automatic decompression for gzip, deflate, and Brotli
+            httpClientHandler.AutomaticDecompression = System.Net.DecompressionMethods.GZip |
+                                             System.Net.DecompressionMethods.Deflate |
+                                             System.Net.DecompressionMethods.Brotli;
+
+            using (HttpClient client = new HttpClient(httpClientHandler))
             {
-                var context = await browser.NewContextAsync(new BrowserNewContextOptions
+                client.DefaultRequestHeaders.Add("User-Agent", "PostmanRuntime/7.43.0");
+                client.DefaultRequestHeaders.Add("Accept", "*/*");
+                client.DefaultRequestHeaders.Add("Connection", "keep-alive");
+                client.DefaultRequestHeaders.Add("Accept-Encoding", "gzip, deflate, br");
+
+                try
                 {
-                    UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-                });
+                    HttpResponseMessage response = await client.GetAsync(url);
 
-                var page = await context.NewPageAsync();
-
-                await Task.Delay(1500);
-
-                await page.SetExtraHTTPHeadersAsync(new Dictionary<string, string>
-                {
-                    { "Referer", "https://www.nseindia.com/" },
-                    { "Accept-Language", "en-US,en;q=0.9" },
-                    { "Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8" }
-                });
-
-                await page.GotoAsync(url, new PageGotoOptions
-                {
-                    WaitUntil = WaitUntilState.NetworkIdle
-                });
-
-                await Task.Delay(10000);
-
-                Console.WriteLine("Page loaded successfully!");
-
-                var cookies = await context.CookiesAsync();
-                string cookieHeader = string.Join("; ", cookies.Select(c => $"{c.Name}={c.Value}"));
-
-                foreach (var cookie in cookieHeader.Split(";"))
-                {
-                    if (cookie.Trim().StartsWith("_abck="))
+                    if (response.IsSuccessStatusCode)
                     {
-                        finalCookie += cookie.Trim() + ";";
-                    }
+                        string localCookie = response.Headers.NonValidated.ToList().Where(x => x.Key == "Set-Cookie").FirstOrDefault().Value.ToString();
 
-                    if (cookie.Trim().StartsWith("ak_bmsc="))
-                    {
-                        finalCookie += cookie.Trim() + ";";
-                    }
+                        foreach (var cookie in localCookie.Split(";"))
+                        {
+                            if (cookie.Trim().Contains("_abck="))
+                                finalCookie += cookie.Trim().Substring(cookie.Trim().IndexOf("_abck=")).Trim() + ";";
 
-                    if (cookie.Trim().StartsWith("bm_sv="))
-                    {
-                        finalCookie += cookie.Trim() + ";";
-                    }
+                            if (cookie.Trim().Contains("ak_bmsc"))
+                                finalCookie += cookie.Trim().Substring(cookie.Trim().IndexOf("ak_bmsc=")).Trim() + ";";
 
-                    if (cookie.Trim().StartsWith("bm_sz="))
-                    {
-                        finalCookie += cookie.Trim() + ";";
-                    }
+                            if (cookie.Trim().Contains("bm_sv="))
+                                finalCookie += cookie.Trim().Substring(cookie.Trim().IndexOf("bm_sv=")).Trim() + ";";
 
-                    if (cookie.Trim().StartsWith("nseappid="))
-                    {
-                        finalCookie += cookie.Trim() + ";";
-                    }
+                            if (cookie.Trim().Contains("bm_sz="))
+                                finalCookie += cookie.Trim().Substring(cookie.Trim().IndexOf("bm_sz=")).Trim() + ";";
 
-                    if (cookie.Trim().StartsWith("nsit="))
-                    {
-                        finalCookie += cookie.Trim() + ";";
+                            if (cookie.Trim().Contains("nseappid="))
+                                finalCookie += cookie.Trim().Substring(cookie.Trim().IndexOf("nseappid=")).Trim() + ";";
+
+                            if (cookie.Trim().Contains("nsit="))
+                                finalCookie += cookie.Trim().Substring(cookie.Trim().IndexOf("nsit=")).Trim() + ";";
+                            
+                            if (cookie.Trim().Contains("AKA_A2="))                            
+                                finalCookie += cookie.Trim().Substring(cookie.Trim().IndexOf("AKA_A2=")).Trim() + ";";                            
+                        }
+
+                        finalCookie = finalCookie.Trim();
                     }
                 }
-                finalCookie = finalCookie.Trim();
+                catch (Exception ex)
+                {
+                    Utility.LogDetails($"{nameof(OpenPlayWrightBrowser)} Exception: {ex.Message}");
+                    return "";
+                }
+            }
 
-                Console.WriteLine(finalCookie);
-
-                return finalCookie;
-            }
-            catch (Exception ex)
-            {
-                Utility.LogDetails($"{nameof(OpenPlayWrightBrowser)} Exception: {ex.Message}");
-                return "";
-            }
-            finally
-            {
-                await browser.CloseAsync();
-            }
+            return finalCookie;
         }
     }
 }
