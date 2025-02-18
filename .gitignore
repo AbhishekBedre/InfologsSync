@@ -4,3 +4,7 @@
 
 /.vs
 /SyncData/bin
+/SyncData/obj/Debug/net6.0/ref
+/SyncData/obj/Debug/net6.0/refint
+/SyncData/obj/Debug/net6.0
+/SyncData/obj
