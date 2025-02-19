@@ -37,7 +37,7 @@ class Program
                     q.AddJob<SessionUpdateJob>(sessionUpdateJob)
                         .AddTrigger(trigger =>
                         {
-                            //trigger.ForJob(sessionUpdateJob).WithSimpleSchedule(s => s.WithIntervalInSeconds(10).RepeatForever()); 
+                            //trigger.ForJob(sessionUpdateJob).WithSimpleSchedule(s => s.WithIntervalInSeconds(30).RepeatForever()); 
                             trigger.ForJob(sessionUpdateJob).WithCronSchedule(SESSION_EXPRESSION); 
                         });
 

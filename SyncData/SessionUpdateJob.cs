@@ -118,6 +118,7 @@ namespace SyncData
                 client.DefaultRequestHeaders.Add("Accept", "*/*");
                 client.DefaultRequestHeaders.Add("Connection", "keep-alive");
                 client.DefaultRequestHeaders.Add("Accept-Encoding", "gzip, deflate, br");
+                client.DefaultRequestHeaders.Add("cookie", "AKA_A2=A;");
 
                 try
                 {
