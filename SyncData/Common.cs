@@ -10,7 +10,8 @@ namespace SyncData
         NiftyUpdate,
         BroderMarketUpdate,
         StockUpdate,
-        BankNiftyUpdate
+        BankNiftyUpdate,
+        FIIDIIActivity
     }
 
     public static class Common
