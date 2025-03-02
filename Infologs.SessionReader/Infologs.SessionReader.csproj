@@ -1,0 +1,30 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="DataReader.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="6.0.36" />
+  </ItemGroup>
+
+  <!--<ItemGroup>
+    <None Include="lib\OptionChain.dll" Pack="true" PackagePath="lib/">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>-->
+
+  <ItemGroup>
+    <Reference Include="OptionChain">
+      <HintPath>lib\OptionChain.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
+</Project>

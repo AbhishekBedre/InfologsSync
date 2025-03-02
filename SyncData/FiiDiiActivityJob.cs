@@ -1,8 +1,9 @@
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using OptionChain;
+using OptionChain.Models;
 using Quartz;
-using System.Text.Json;
+
+using Infologs.SessionReader;
 
 public class FiiDiiActivityJob : IJob
 {
@@ -21,127 +22,52 @@ public class FiiDiiActivityJob : IJob
         _logger.LogInformation($"{nameof(FiiDiiActivityJob)} Started: " + context.FireTimeUtc.ToLocalTime().ToString("hh:mm:ss"));
         Utility.LogDetails($"{nameof(FiiDiiActivityJob)} Started: " + context.FireTimeUtc.ToLocalTime().ToString("hh:mm:ss"));
 
-        await GetFIIDIIActivity(context);
+        await ExecuteFIIDIIActivityJob(context);
 
-        Console.WriteLine($"{nameof(FiiDiiActivityJob)} completed successfully. Time: - " + context.FireTimeUtc.ToLocalTime());
+        Console.WriteLine($"{nameof(ExecuteFIIDIIActivityJob)} completed successfully. Time: - " + context.FireTimeUtc.ToLocalTime());
 
         await Task.CompletedTask;
     }
-
-    public async Task GetFIIDIIActivity(IJobExecutionContext context)
+    public async Task ExecuteFIIDIIActivityJob(IJobExecutionContext context)
     {
     STEP:
 
         try
         {
-            (bool status, object result, FiiDiiActivity? fiiDiiActivity) = await GetFIIDIIActivityData(counter, context);
+            var fiidiiResult = await ReadFIIDIIActvity(counter, context);
 
-            if (status == false && Convert.ToInt16(result) <= 3)
+            if (fiidiiResult.Status == false && Convert.ToInt16(fiidiiResult.Counter) <= 3)
             {
                 await Task.Delay(2000);
-                counter = result;
+                counter = fiidiiResult.Counter;
 
                 goto STEP;
-            }
-
-            if (Convert.ToInt32(counter) <= 3)
-            {
-                counter = 0;
-                // Make a Db Call
-                await StoreFIIDIIActivityDataInTable(fiiDiiActivity, context);
             }
         }
         catch (Exception ex)
         {
-            _logger.LogInformation($"Multiple tried to get FII DII Activity but not succeed. counter: {counter}");
+            _logger.LogInformation($"Multiple tried for stock data but not succeed. counter: {counter}");
             counter = 0;
-
-            Utility.LogDetails($"{nameof(GetFIIDIIActivity)} Exception: {ex.Message}");
         }
     }
 
-    private async Task<(bool, object, List<FiiDiiActivity>?)> GetFIIDIIActivityData(object counter, IJobExecutionContext context)
+    public async Task<(bool Status, object Counter)> ReadFIIDIIActvity(object counter,
+            IJobExecutionContext context)
     {
-        Utility.LogDetails($"{nameof(GetFIIDIIActivityData)} -> Send quots reqest counter:" + counter + ", Time: " + context.FireTimeUtc.ToLocalTime().ToString("hh:mm"));
-
         bool status = true;
-        List<FiiDiiActivity>? fiiDiiActivityData = null;
-        
-        _logger.LogInformation($"Exection time: {counter}");
 
-
-        HttpClientHandler httpClientHandler = new HttpClientHandler();
-
-        // Enable automatic decompression for gzip, deflate, and Brotli
-        httpClientHandler.AutomaticDecompression = System.Net.DecompressionMethods.GZip |
-                                            System.Net.DecompressionMethods.Deflate |
-                                            System.Net.DecompressionMethods.Brotli;
-
-        using (HttpClient client = new HttpClient(httpClientHandler))
-        {
-            await Common.UpdateCookieAndHeaders(client, _optionDbContext, JobType.FIIDIIActivity);
-
-            string url = "https://www.nseindia.com/api/fiidiiTradeReact";
-
-            try
-            {
-                HttpResponseMessage response = await client.GetAsync(url);
-                if (response.IsSuccessStatusCode)
-                {
-                    string jsonContent = await response.Content.ReadAsStringAsync();
-
-                    var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-                    fiiDiiActivityData = JsonSerializer.Deserialize<List<FiiDiiActivity>>(jsonContent, options);
-
-                    if (fiiDiiActivityData == null)
-                    {
-                        _logger.LogInformation("Failed to parse JSON content.");
-                        Utility.LogDetails($"{nameof(GetFIIDIIActivityData)} -> Failed to parse JSON content.");
-                        throw new Exception("Failed to parse JSON content.");
-                    }
-                }
-                else
-                {
-                    Utility.LogDetails($"{nameof(GetFIIDIIActivityData)} -> HTTP Error: {response.StatusCode}.");
-                    _logger.LogInformation($"HTTP Error: {response.StatusCode}");
-                    throw new Exception($"Http Error: {response.StatusCode}");
-                }
-            }
-            catch (Exception ex)
-            {
-                Utility.LogDetails($"{nameof(GetFIIDIIActivityData)} -> Exception: {ex.Message}.");
-                _logger.LogInformation($"Exception: {ex.Message}");
-                counter = Convert.ToInt16(counter) + 1;
-                status = false;
-            }
-        }
-
-        return (status, counter, optionData);            
-    }
-    private async Task<bool> StoreFIIDIIActivityDataInTable(List<FiiDiiActivity>? fiiDiiActivity, IJobExecutionContext context)
-    {
         try
         {
-            _logger.LogInformation("Adding FII & DII data to table.");
+            DataReader dataReader = new DataReader(_optionDbContext);
 
-            if(fiiDiiActivity != null && fiiDiiActivity.Any()) { 
-
-                // Check if the activity for date is available or not, if not then insert otherwise skip
-
-                await _optionDbContext.FiiDiiActivity.AddRangeAsync(fiiDiiActivity);
-                await _optionDbContext.SaveChangesAsync();
-                
-                return true;
-            }
-            
-            return false;
+            status = await dataReader.ReadFIIDIIActvityAsync();
         }
-        catch(Exception ex)
+        catch (Exception ex)
         {
-            Utility.LogDetails($"{nameof(StoreStockDataInTable)} -> Exception: {ex.Message}.");            
-            return false;
+            counter = Convert.ToInt16(counter) + 1;
+            status = false;
         }
 
-        return false;
+        return (status, counter);
     }
 }

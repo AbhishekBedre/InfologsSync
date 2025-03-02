@@ -12,7 +12,7 @@
     "function-architecture" : "x86_64",
     "function-runtime"      : "dotnet8",
     "function-memory-size"  : 128,
-    "function-timeout"      : 10,
+    "function-timeout"      : 30,
     "function-handler"      : "aws-session-sync-net8::aws_session_sync_net8.LambdaEntryPoint::Handler",
     "framework"             : "net8.0",
     "function-name"         : "aws-session-sync-net8",

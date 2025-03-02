@@ -15,7 +15,7 @@ class Program
         const string MID_SESSION_EXP = "0 0-59/5 10-14 ? * MON-FRI";
         const string LAST_SESSION_EXP = "0 0-30/5 15 ? * MON-FRI";
         const string FINAL_SESSION_EXP = "0 0 16 ? * MON-FRI";
-        const string FIIDIIACTIVITY_EXPRESSION = "0 5 9 ? * MON-FRI";
+        const string FIIDIIACTIVITY_EXPRESSION = "0 0 20 ? * MON-FRI";
 
         var host = Host.CreateDefaultBuilder(args)
             .UseWindowsService()
@@ -32,28 +32,28 @@ class Program
                 {
                     #region "SESSION UPDATE JOB"
 
-                    var sessionUpdateJob = JobKey.Create("sessionUpdateJob");                    
+                    var sessionUpdateJob = JobKey.Create("sessionUpdateJob");
 
                     // 0 0 9-15 ? * MON-FRI
                     q.AddJob<SessionUpdateJob>(sessionUpdateJob)
                         .AddTrigger(trigger =>
                         {
-                            //trigger.ForJob(sessionUpdateJob).WithSimpleSchedule(s => s.WithIntervalInSeconds(30).RepeatForever()); 
-                            trigger.ForJob(sessionUpdateJob).WithCronSchedule(SESSION_EXPRESSION); 
+                            //trigger.ForJob(sessionUpdateJob).WithSimpleSchedule(s => s.WithIntervalInMinutes(10)); 
+                            trigger.ForJob(sessionUpdateJob).WithCronSchedule(SESSION_EXPRESSION);
                         });
 
                     #endregion
 
                     #region "FII DII ACTIVITY UPDATE JOB"
 
-                    var fiidiiActivityUpdateJob = JobKey.Create("fiidiiActivityUpdateJob");                    
+                    var fiidiiActivityUpdateJob = JobKey.Create("fiidiiActivityUpdateJob");
 
                     // 0 0 9-15 ? * MON-FRI
                     q.AddJob<FiiDiiActivityJob>(fiidiiActivityUpdateJob)
                         .AddTrigger(trigger =>
                         {
-                            //trigger.ForJob(fiidiiActivityUpdateJob).WithSimpleSchedule(s => s.WithIntervalInSeconds(10).RepeatForever()); 
-                            trigger.ForJob(fiidiiActivityUpdateJob).WithCronSchedule(FIIDIIACTIVITY_EXPRESSION); 
+                            //trigger.ForJob(fiidiiActivityUpdateJob).WithSimpleSchedule(s => s.WithIntervalInMinutes(10)); 
+                            trigger.ForJob(fiidiiActivityUpdateJob).WithCronSchedule(FIIDIIACTIVITY_EXPRESSION);
                         });
 
                     #endregion
@@ -94,7 +94,7 @@ class Program
                         });
 
                     #endregion
-                    
+
                     #region "NIFTY UPDATE JOB"
 
                     var niftyFirstSession = JobKey.Create("niftyFirstSession");

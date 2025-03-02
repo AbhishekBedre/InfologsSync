@@ -31,8 +31,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Infologs.SessionReader\Infologs.SessionReader.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Reference Include="OptionChain">
-      <HintPath>..\OptionChain\bin\Debug\net6.0\OptionChain.dll</HintPath>
+      <HintPath>..\dll\OptionChain.dll</HintPath>
     </Reference>
   </ItemGroup>
 

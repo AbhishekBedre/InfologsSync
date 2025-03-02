@@ -1,4 +1,5 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿using Infologs.SessionReader;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using OptionChain;
 using Quartz;
@@ -63,31 +64,8 @@ namespace SyncData
 
             try
             {
-                cookie = await OpenPlayWrightBrowser();
-
-                if (string.IsNullOrWhiteSpace(cookie))
-                {
-                    status = false;
-                }
-                else
-                {
-                    var sessionRecord = await _optionDbContext.Sessions.Where(x => x.Id > 0).FirstOrDefaultAsync();
-
-                    if(sessionRecord == null)
-                    {
-                        await _optionDbContext.Sessions.AddAsync(new Sessions
-                        {
-                            Cookie = cookie,
-                            UpdatedDate = DateTime.Now
-                        });
-                    } else
-                    {
-                        sessionRecord.Cookie = cookie;
-                        sessionRecord.UpdatedDate = DateTime.Now;
-                    }
-
-                    await _optionDbContext.SaveChangesAsync();
-                }
+                DataReader dataReader = new DataReader(_optionDbContext);
+                await dataReader.ReadSessionAsync();                
             }
             catch (Exception ex)
             {
@@ -98,71 +76,6 @@ namespace SyncData
             }
 
             return (status, counter, cookie);
-        }
-
-        public async Task<string> OpenPlayWrightBrowser()
-        {
-            string finalCookie = "";
-            string url = "https://www.nseindia.com/";
-
-            HttpClientHandler httpClientHandler = new HttpClientHandler();
-
-            // Enable automatic decompression for gzip, deflate, and Brotli
-            httpClientHandler.AutomaticDecompression = System.Net.DecompressionMethods.GZip |
-                                             System.Net.DecompressionMethods.Deflate |
-                                             System.Net.DecompressionMethods.Brotli;
-
-            using (HttpClient client = new HttpClient(httpClientHandler))
-            {
-                client.DefaultRequestHeaders.Add("User-Agent", "PostmanRuntime/7.43.0");
-                client.DefaultRequestHeaders.Add("Accept", "*/*");
-                client.DefaultRequestHeaders.Add("Connection", "keep-alive");
-                client.DefaultRequestHeaders.Add("Accept-Encoding", "gzip, deflate, br");
-                client.DefaultRequestHeaders.Add("cookie", "AKA_A2=A;");
-
-                try
-                {
-                    HttpResponseMessage response = await client.GetAsync(url);
-
-                    if (response.IsSuccessStatusCode)
-                    {
-                        string localCookie = response.Headers.NonValidated.ToList().Where(x => x.Key == "Set-Cookie").FirstOrDefault().Value.ToString();
-
-                        foreach (var cookie in localCookie.Split(";"))
-                        {
-                            if (cookie.Trim().Contains("_abck="))
-                                finalCookie += cookie.Trim().Substring(cookie.Trim().IndexOf("_abck=")).Trim() + ";";
-
-                            if (cookie.Trim().Contains("ak_bmsc"))
-                                finalCookie += cookie.Trim().Substring(cookie.Trim().IndexOf("ak_bmsc=")).Trim() + ";";
-
-                            if (cookie.Trim().Contains("bm_sv="))
-                                finalCookie += cookie.Trim().Substring(cookie.Trim().IndexOf("bm_sv=")).Trim() + ";";
-
-                            if (cookie.Trim().Contains("bm_sz="))
-                                finalCookie += cookie.Trim().Substring(cookie.Trim().IndexOf("bm_sz=")).Trim() + ";";
-
-                            if (cookie.Trim().Contains("nseappid="))
-                                finalCookie += cookie.Trim().Substring(cookie.Trim().IndexOf("nseappid=")).Trim() + ";";
-
-                            if (cookie.Trim().Contains("nsit="))
-                                finalCookie += cookie.Trim().Substring(cookie.Trim().IndexOf("nsit=")).Trim() + ";";
-                            
-                            if (cookie.Trim().Contains("AKA_A2="))                            
-                                finalCookie += cookie.Trim().Substring(cookie.Trim().IndexOf("AKA_A2=")).Trim() + ";";                            
-                        }
-
-                        finalCookie = finalCookie.Trim();
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Utility.LogDetails($"{nameof(OpenPlayWrightBrowser)} Exception: {ex.Message}");
-                    return "";
-                }
-            }
-
-            return finalCookie;
         }
     }
 }
