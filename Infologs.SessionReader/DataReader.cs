@@ -50,19 +50,19 @@ namespace Infologs.SessionReader
                         foreach (var cookie in localCookie.Split(";"))
                         {
                             if (cookie.Trim().Contains("_abck="))
-                                finalCookie.Append(cookie.Trim() + ";");
-                            if (cookie.Trim().Contains("ak_bmsc"))
-                                finalCookie.Append(cookie.Trim() + ";");
+                                finalCookie.Append(cookie.Substring(cookie.IndexOf("_abck=")).Trim() + ";");
+                            if (cookie.Trim().Contains("ak_bmsc="))
+                                finalCookie.Append(cookie.Substring(cookie.IndexOf("ak_bmsc=")).Trim() + ";");
                             if (cookie.Trim().Contains("bm_sv="))
-                                finalCookie.Append(cookie.Trim() + ";");
+                                finalCookie.Append(cookie.Substring(cookie.IndexOf("bm_sv=")).Trim() + ";");
                             if (cookie.Trim().Contains("bm_sz="))
-                                finalCookie.Append(cookie.Trim() + ";");
+                                finalCookie.Append(cookie.Substring(cookie.IndexOf("bm_sz=")).Trim() + ";");
                             if (cookie.Trim().Contains("nseappid="))
-                                finalCookie.Append(cookie.Trim() + ";");
+                                finalCookie.Append(cookie.Substring(cookie.IndexOf("nseappid=")).Trim() + ";");
                             if (cookie.Trim().Contains("nsit="))
-                                finalCookie.Append(cookie.Trim() + ";");
+                                finalCookie.Append(cookie.Substring(cookie.IndexOf("nsit=")).Trim() + ";");
                             if (cookie.Trim().Contains("AKA_A2="))
-                                finalCookie.Append(cookie.Trim() + ";");
+                                finalCookie.Append(cookie.Substring(cookie.IndexOf("AKA_A2=")).Trim() + ";");
                         }
 
                         TimeZoneInfo istZone = TimeZoneInfo.FindSystemTimeZoneById("India Standard Time");
@@ -118,7 +118,7 @@ namespace Infologs.SessionReader
                         fiiDiiActivityresponse = JsonSerializer.Deserialize<List<FIIDIIActivityResponse>>(jsonContent, options);
                     }
                 }
-                catch (Exception ex)
+                catch
                 {
                     return false;
                 }

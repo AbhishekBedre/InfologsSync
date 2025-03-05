@@ -25,8 +25,6 @@ class Program
 
                 services.AddDbContext<OptionDbContext>(x => x.UseSqlServer(connectionString));
 
-                var alwaysLive = JobKey.Create("alwaysLive");
-
                 // Add Quartz services
                 services.AddQuartz(q =>
                 {
