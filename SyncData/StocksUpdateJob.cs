@@ -270,13 +270,8 @@ namespace SyncData
                         }
                     }
 
-                    // Update the RFactor for all stocks
-                    _ = Task.Run(() =>
-                    {
-                        _ = _optionDbContext.Database.ExecuteSqlRawAsync(@"EXEC [UpdateRelativeFactor];");
-                    });
-
-                    await _optionDbContext.Database.ExecuteSqlRawAsync(@"EXEC [CheckIntradayBlast] '""+ DateTime.Now.Date.ToString(""yyyy-MM-dd"") +""';");
+                    // Update the RFactor for all stocks                    
+                    await _optionDbContext.Database.ExecuteSqlRawAsync(@"EXEC [UpdateRelativeFactor];");
 
                     try
                     {
