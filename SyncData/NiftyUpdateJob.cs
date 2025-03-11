@@ -145,13 +145,13 @@ namespace SyncData
                             r.Time = DateTime.Now.TimeOfDay;
                         });
 
-                        await _optionDbContext.AllOptionData.AddRangeAsync(optionData.Records.Data);
+                        //await _optionDbContext.AllOptionData.AddRangeAsync(optionData.Records.Data);
 
-                        await _optionDbContext.SaveChangesAsync();
+                        //await _optionDbContext.SaveChangesAsync();
 
-                        await _optionDbContext.CurrentExpiryOptionDaata.AddRangeAsync(new FilteredOptionData().ConvertToFilterOptionData(optionData.Filtered.Data));
+                        //await _optionDbContext.CurrentExpiryOptionDaata.AddRangeAsync(new FilteredOptionData().ConvertToFilterOptionData(optionData.Filtered.Data));
 
-                        await _optionDbContext.SaveChangesAsync();
+                        //await _optionDbContext.SaveChangesAsync();
 
                         // Calculate the Summary
 
