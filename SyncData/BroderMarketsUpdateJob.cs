@@ -7,11 +7,40 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
 namespace SyncData
 {
+    public class NullableDecimalConverter : JsonConverter<decimal?>
+    {
+        public override decimal? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            if (reader.TokenType == JsonTokenType.String)
+            {
+                string value = reader.GetString();
+                if (value == "-")
+                    return null;
+            }
+            else if (reader.TokenType == JsonTokenType.Number)
+            {
+                return reader.GetDecimal();
+            }
+
+            return null;
+        }
+
+        public override void Write(Utf8JsonWriter writer, decimal? value, JsonSerializerOptions options)
+        {
+            if (value.HasValue)
+                writer.WriteNumberValue(value.Value);
+            else
+                writer.WriteNullValue();
+        }
+    }
+
+
     public class BroderMarketsUpdateJob : IJob
     {
         private readonly ILogger<BroderMarketsUpdateJob> _logger;
@@ -103,7 +132,9 @@ namespace SyncData
                     {
                         string jsonContent = await response.Content.ReadAsStringAsync();
 
-                        var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                        var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true,
+                            Converters = { new NullableDecimalConverter() }
+                        };
                         broderMarketRoot = JsonSerializer.Deserialize<BroderMarketRoot>(jsonContent, options);
 
                         if (broderMarketRoot == null || broderMarketRoot.Data == null)
