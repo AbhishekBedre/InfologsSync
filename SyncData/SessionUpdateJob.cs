@@ -10,18 +10,21 @@ namespace SyncData
     {
         private readonly ILogger<FetchAndProcessJob> _logger;
         private readonly OptionDbContext _optionDbContext;
+        private ICacheHelper _cacheHelper;
         private object counter = 0;
 
-        public SessionUpdateJob(ILogger<FetchAndProcessJob> log, OptionDbContext optionDbContext)
+        public SessionUpdateJob(ILogger<FetchAndProcessJob> log, OptionDbContext optionDbContext, 
+            ICacheHelper cacheHelper)
         {
             _logger = log;
             _optionDbContext = optionDbContext;
+            _cacheHelper = cacheHelper;
         }
 
         public async Task Execute(IJobExecutionContext context)
         {
             _logger.LogInformation($"{nameof(SessionUpdateJob)} Started: " + context.FireTimeUtc.ToLocalTime().ToString("hh:mm:ss"));
-            Utility.LogDetails($"{nameof(SessionUpdateJob)} Started: " + context.FireTimeUtc.ToLocalTime().ToString("hh:mm:ss"));
+            //Utility.LogDetails($"{nameof(SessionUpdateJob)} Started: " + context.FireTimeUtc.ToLocalTime().ToString("hh:mm:ss"));
 
             await ExecuteSessionUpdate(context);
 
@@ -52,7 +55,7 @@ namespace SyncData
                 _logger.LogInformation($"Multiple tried for stock data but not succeed. counter: {counter}");
                 counter = 0;
 
-                Utility.LogDetails($"{nameof(ExecuteSessionUpdate)} Exception: {ex.Message}");
+                //Utility.LogDetails($"{nameof(ExecuteSessionUpdate)} Exception: {ex.Message}");
             }
         }
 
@@ -64,7 +67,7 @@ namespace SyncData
 
             try
             {
-                DataReader dataReader = new DataReader(_optionDbContext);
+                DataReader dataReader = new DataReader(_optionDbContext, _cacheHelper);
                 await dataReader.ReadSessionAsync();                
             }
             catch (Exception ex)

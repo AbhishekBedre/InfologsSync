@@ -1,4 +1,5 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿using Infologs.SessionReader;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using OptionChain;
 using Quartz;
@@ -10,16 +11,19 @@ namespace SyncData
     {
         private readonly ILogger<BankNiftyUpdateJob> _logger;
         private readonly OptionDbContext _optionDbContext;
+        private readonly ICacheHelper _cacheHelper;
         private object counter = 0;
         private object stockCounter = 0;
         private double? previousCPEOIDiffValue = null; // To store the previous X value
         private double? previousCPEColDiffValue = null; // To store the previous X value
 
         public BankNiftyUpdateJob(ILogger<BankNiftyUpdateJob> log,
-            OptionDbContext optionDbContext)
+            OptionDbContext optionDbContext,
+            ICacheHelper cacheHelper)
         {
             _logger = log;
             _optionDbContext = optionDbContext;
+            _cacheHelper = cacheHelper;
         }
 
         public async Task Execute(IJobExecutionContext context)
@@ -85,7 +89,7 @@ namespace SyncData
 
             using (HttpClient client = new HttpClient(httpClientHandler))
             {
-                await Common.UpdateCookieAndHeaders(client, _optionDbContext, JobType.BankNiftyUpdate);
+                await Common.UpdateCookieAndHeaders(client, _optionDbContext, JobType.BankNiftyUpdate, _cacheHelper);
 
                 string url = "https://www.nseindia.com/api/option-chain-indices?symbol=BANKNIFTY";
 
@@ -108,14 +112,14 @@ namespace SyncData
                     }
                     else
                     {
-                        Utility.LogDetails($"{nameof(GetBankNiftyOptionData)} -> HTTP Error: {response.StatusCode}.");
+                        //Utility.LogDetails($"{nameof(GetBankNiftyOptionData)} -> HTTP Error: {response.StatusCode}.");
                         _logger.LogInformation($"HTTP Error: {response.StatusCode}");
                         throw new Exception($"Http Error: {response.StatusCode}");
                     }
                 }
                 catch (Exception ex)
                 {
-                    Utility.LogDetails($"{nameof(GetBankNiftyOptionData)} -> Exception: {ex.Message}.");
+                    //Utility.LogDetails($"{nameof(GetBankNiftyOptionData)} -> Exception: {ex.Message}.");
                     _logger.LogInformation($"Exception: {ex.Message}");
                     counter = Convert.ToInt16(counter) + 1;
                     status = false;
@@ -133,7 +137,7 @@ namespace SyncData
 
                 if (optionData != null)
                 {
-                    await _optionDbContext.Database.BeginTransactionAsync();
+                    //await _optionDbContext.Database.BeginTransactionAsync();
 
                     if (optionData.Records != null
                         && optionData.Filtered != null
@@ -200,20 +204,13 @@ namespace SyncData
                         await _optionDbContext.SaveChangesAsync();
 
                     }
-                    else
-                    {
-                        await _optionDbContext.Database.RollbackTransactionAsync();
-                    }
-
-                    await _optionDbContext.Database.CommitTransactionAsync();
-
                 }
             }
             catch (Exception ex)
             {
                 _logger.LogError($"DB Function Exception: {ex.Message}");
-                Utility.LogDetails($"{nameof(StoreBankOptionDataInTable)} -> Exception: {ex.Message}.");
-                await _optionDbContext.Database.RollbackTransactionAsync();
+                //Utility.LogDetails($"{nameof(StoreBankOptionDataInTable)} -> Exception: {ex.Message}.");
+                //await _optionDbContext.Database.RollbackTransactionAsync();
                 return false;
             }
 

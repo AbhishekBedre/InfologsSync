@@ -1,5 +1,7 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿using Infologs.SessionReader;
+using Microsoft.EntityFrameworkCore;
 using OptionChain;
+using System.Text;
 using System.Text.RegularExpressions;
 
 namespace SyncData
@@ -16,16 +18,25 @@ namespace SyncData
 
     public static class Common
     {
-        public static async Task UpdateCookieAndHeaders(HttpClient httpClient, OptionDbContext optionDbContext, JobType jobType)
+        public static async Task UpdateCookieAndHeaders(HttpClient httpClient, OptionDbContext optionDbContext, JobType jobType, ICacheHelper cacheHelper)
         {
             var sessionCookie = "";
             var cookies = "";
 
-            var sessionInfo = await optionDbContext.Sessions.Where(x => x.Id > 0).FirstOrDefaultAsync();
+            var Cookie = cacheHelper.Get<string>("sessionCookie");
 
-            if (sessionInfo != null)
+            if (string.IsNullOrWhiteSpace(Cookie))
             {
-                sessionCookie = sessionInfo.Cookie ?? "";
+                var sessionInfo = await optionDbContext.Sessions.FirstAsync();
+
+                if (sessionInfo != null)
+                {
+                    sessionCookie = sessionInfo.Cookie ?? "";
+                }
+            }
+            else
+            {
+                sessionCookie = Cookie;
             }
 
             foreach (var cookie in sessionCookie.Split(";"))

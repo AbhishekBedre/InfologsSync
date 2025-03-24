@@ -1,5 +1,5 @@
-﻿using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Internal;
+﻿using Infologs.SessionReader;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using OptionChain;
@@ -24,6 +24,9 @@ class Program
                 string connectionString = hostContext.Configuration.GetSection("ConnectionStrings:DefaultConnection").Value.ToString();
 
                 services.AddDbContext<OptionDbContext>(x => x.UseSqlServer(connectionString));
+
+                services.AddMemoryCache();
+                services.AddSingleton<ICacheHelper, CacheHelper>();
 
                 // Add Quartz services
                 services.AddQuartz(q =>
@@ -50,7 +53,7 @@ class Program
                     q.AddJob<FiiDiiActivityJob>(fiidiiActivityUpdateJob)
                         .AddTrigger(trigger =>
                         {
-                            //trigger.ForJob(fiidiiActivityUpdateJob).WithSimpleSchedule(s => s.WithIntervalInMinutes(10)); 
+                            //trigger.ForJob(fiidiiActivityUpdateJob).WithSimpleSchedule(s => s.WithIntervalInMinutes(2).RepeatForever()); 
                             trigger.ForJob(fiidiiActivityUpdateJob).WithCronSchedule(FIIDIIACTIVITY_EXPRESSION);
                         });
 

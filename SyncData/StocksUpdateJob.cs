@@ -1,4 +1,5 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿using Infologs.SessionReader;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using OptionChain;
 using Quartz;
@@ -10,21 +11,23 @@ namespace SyncData
     {
         private readonly ILogger<StocksUpdateJob> _logger;
         private readonly OptionDbContext _optionDbContext;
+        private readonly ICacheHelper _cacheHelper;
         private object counter = 0;
         private object stockCounter = 0;
         private double? previousCPEOIDiffValue = null; // To store the previous X value
         private double? previousCPEColDiffValue = null; // To store the previous X value
 
-        public StocksUpdateJob(ILogger<StocksUpdateJob> log, OptionDbContext optionDbContext)
+        public StocksUpdateJob(ILogger<StocksUpdateJob> log, OptionDbContext optionDbContext, ICacheHelper cacheHelper)
         {
             _logger = log;
             _optionDbContext = optionDbContext;
+            _cacheHelper = cacheHelper;
         }
 
         public async Task Execute(IJobExecutionContext context)
         {
             _logger.LogInformation($"{nameof(StocksUpdateJob)} Started: " + context.FireTimeUtc.ToLocalTime().ToString("hh:mm:ss"));
-            Utility.LogDetails($"{nameof(StocksUpdateJob)} Started: " + context.FireTimeUtc.ToLocalTime().ToString("hh:mm:ss"));
+            //Utility.LogDetails($"{nameof(StocksUpdateJob)} Started: " + context.FireTimeUtc.ToLocalTime().ToString("hh:mm:ss"));
 
             await GetStockData(context);
 
@@ -91,7 +94,7 @@ namespace SyncData
 
             using (HttpClient client = new HttpClient(httpClientHandler))
             {
-                await Common.UpdateCookieAndHeaders(client, _optionDbContext, JobType.StockUpdate);
+                await Common.UpdateCookieAndHeaders(client, _optionDbContext, JobType.StockUpdate, _cacheHelper);
 
                 string url = "https://www.nseindia.com/api/equity-stockIndices?index=NIFTY%20500";
 
@@ -143,7 +146,7 @@ namespace SyncData
                 if (stockRoot != null
                     && stockRoot.Data != null)
                 {
-                    await _optionDbContext.Database.BeginTransactionAsync();
+                    //await _optionDbContext.Database.BeginTransactionAsync();
 
                     List<StockData> stockDatas = new List<StockData>();
                     List<StockMetaData> stockMetaDatas = new List<StockMetaData>();
@@ -211,6 +214,8 @@ namespace SyncData
 
                     await _optionDbContext.StockData.AddRangeAsync(stockDatas);
 
+                    await _optionDbContext.SaveChangesAsync();
+
                     // Advances data
 
                     stockRoot.Advance.EntryDate = DateTime.Now.Date;
@@ -219,8 +224,6 @@ namespace SyncData
                     await _optionDbContext.Advance.AddRangeAsync(stockRoot.Advance);                    
 
                     await _optionDbContext.SaveChangesAsync();
-
-                    await _optionDbContext.Database.CommitTransactionAsync();
 
                     if (context.FireTimeUtc.ToString("hh:mm") == "09:15"
                         || context.FireTimeUtc.ToString("hh:mm") == "09:20"
@@ -246,10 +249,10 @@ namespace SyncData
                                     IsETFSec = stock.IsETFSec,
                                     IsFNOSec = stock.IsFNOSec,
                                     Isin = stock.Isin,
-                                    IsMunicipalBond = stock.IsMunicipalBond,
+                                    IsMunicipalBond = stock.IsMunicipalBond, // Not required
                                     IsSLBSec = stock.IsSLBSec,
                                     IsSuspended = stock.IsSuspended,
-                                    SlbIsin = stock.SlbIsin,
+                                    SlbIsin = stock.SlbIsin, // Not Required
                                 });
                             }
                             else
@@ -270,10 +273,10 @@ namespace SyncData
                                 metaData.IsSLBSec = stock.IsSLBSec;
                                 metaData.IsSuspended = stock.IsSuspended;
                                 metaData.SlbIsin = stock.SlbIsin;
-                            }
-
-                            await _optionDbContext.SaveChangesAsync();
+                            }                            
                         }
+
+                        await _optionDbContext.SaveChangesAsync();
                     }
 
                     // Update the RFactor for all stocks                    
@@ -292,7 +295,7 @@ namespace SyncData
                             else
                                 _logger.LogError("notification call failed.");
                         }
-                    }catch(Exception ex)
+                    } catch(Exception ex)
                     {
                         _logger.LogError(ex.Message);
                     }
@@ -301,7 +304,7 @@ namespace SyncData
             catch (Exception ex)
             {
                 Utility.LogDetails($"{nameof(StoreStockDataInTable)} -> Exception: {ex.Message}.");
-                await _optionDbContext.Database.RollbackTransactionAsync();
+                //await _optionDbContext.Database.RollbackTransactionAsync();
                 return false;
             }
 

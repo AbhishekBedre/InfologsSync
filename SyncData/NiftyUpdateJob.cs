@@ -1,4 +1,5 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿using Infologs.SessionReader;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using OptionChain;
 using Quartz;
@@ -10,15 +11,18 @@ namespace SyncData
     {
         private readonly ILogger<NiftyUpdateJob> _logger;
         private readonly OptionDbContext _optionDbContext;
+        private readonly ICacheHelper _cacheHelper;
         private object counter = 0;
         private object stockCounter = 0;
         private double? previousCPEOIDiffValue = null; // To store the previous X value
         private double? previousCPEColDiffValue = null; // To store the previous X value
 
-        public NiftyUpdateJob(ILogger<NiftyUpdateJob> log, OptionDbContext optionDbContext)
+        public NiftyUpdateJob(ILogger<NiftyUpdateJob> log, OptionDbContext optionDbContext,
+            ICacheHelper cacheHelper)
         {
             _logger = log;
             _optionDbContext = optionDbContext;
+            _cacheHelper = cacheHelper;
         }
 
         public async Task Execute(IJobExecutionContext context)
@@ -84,7 +88,7 @@ namespace SyncData
 
             using (HttpClient client = new HttpClient(httpClientHandler))
             {
-                await Common.UpdateCookieAndHeaders(client, _optionDbContext, JobType.NiftyUpdate);
+                await Common.UpdateCookieAndHeaders(client, _optionDbContext, JobType.NiftyUpdate, _cacheHelper);
 
                 string url = "https://www.nseindia.com/api/option-chain-indices?symbol=NIFTY";
 
@@ -132,7 +136,7 @@ namespace SyncData
 
                 if (optionData != null)
                 {
-                    await _optionDbContext.Database.BeginTransactionAsync();
+                    //await _optionDbContext.Database.BeginTransactionAsync();
 
                     if (optionData.Records != null
                         && optionData.Filtered != null
@@ -199,19 +203,15 @@ namespace SyncData
                         await _optionDbContext.SaveChangesAsync();
 
                     }
-                    else
-                    {
-                        await _optionDbContext.Database.RollbackTransactionAsync();
-                    }
 
-                    await _optionDbContext.Database.CommitTransactionAsync();
+                    //await _optionDbContext.Database.CommitTransactionAsync();
                 }
             }
             catch (Exception ex)
             {
                 _logger.LogError($"DB Function Exception: {ex.Message}");
                 Utility.LogDetails($"{nameof(StoreOptionDataInTable)} -> Exception: {ex.Message}.");
-                await _optionDbContext.Database.RollbackTransactionAsync();
+                //await _optionDbContext.Database.RollbackTransactionAsync();
                 return false;
             }
 

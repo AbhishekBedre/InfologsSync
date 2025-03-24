@@ -1,5 +1,6 @@
 ﻿using Infologs.SessionReader.Models;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
 using OptionChain;
 using OptionChain.Models;
 using System.Text;
@@ -16,10 +17,12 @@ namespace Infologs.SessionReader
     public class DataReader : ITasks
     {
         private readonly OptionDbContext _dbContext;
+        private readonly ICacheHelper _cacheHelper;
         HttpClientHandler httpClientHandler;
-        public DataReader(OptionDbContext dbContext)
+        public DataReader(OptionDbContext dbContext, ICacheHelper cacheHelper)
         {
             _dbContext = dbContext;
+            _cacheHelper = cacheHelper;
 
             httpClientHandler = new HttpClientHandler();
 
@@ -82,6 +85,11 @@ namespace Infologs.SessionReader
                         {
                             sessionRecord.Cookie = finalCookie.ToString();
                             sessionRecord.UpdatedDate = istTime;
+
+                            string cacheKey = "sessionCookie";
+
+                            // Use common function to get or create cache
+                            _cacheHelper.GetOrCreate(cacheKey, () => finalCookie.ToString(), TimeSpan.FromHours(5));
                         }
 
                         await _dbContext.SaveChangesAsync();
@@ -103,7 +111,7 @@ namespace Infologs.SessionReader
 
             using (HttpClient client = new HttpClient(httpClientHandler))
             {
-                await Common.UpdateCookieAndHeaders(client, _dbContext, JobType.FIIDIIActivity);
+                await Common.UpdateCookieAndHeaders(client, _dbContext, JobType.FIIDIIActivity, _cacheHelper);
 
                 string url = "https://www.nseindia.com/api/fiidiiTradeReact";
 
@@ -141,11 +149,11 @@ namespace Infologs.SessionReader
                 var currReco = fiiDiiActivityData.First();
 
                 var existingRecord = await _dbContext.FiiDiiActivitys
-                    .Where(x => x.Date.HasValue 
-                        && currReco.Date.HasValue 
+                    .Where(x => x.Date.HasValue
+                        && currReco.Date.HasValue
                         && x.Date.Value.Date == currReco.Date.Value.Date)
                     .FirstOrDefaultAsync();
-                
+
                 if (existingRecord == null)
                 {
                     await _dbContext.FiiDiiActivitys.AddRangeAsync(fiiDiiActivityData);
@@ -171,16 +179,25 @@ namespace Infologs.SessionReader
 
     public static class Common
     {
-        public static async Task UpdateCookieAndHeaders(HttpClient httpClient, OptionDbContext optionDbContext, JobType jobType)
+        public static async Task UpdateCookieAndHeaders(HttpClient httpClient, OptionDbContext optionDbContext, JobType jobType, ICacheHelper cacheHelper)
         {
             var sessionCookie = "";
             StringBuilder cookies = new StringBuilder();
 
-            var sessionInfo = await optionDbContext.Sessions.FirstAsync();
+            var Cookie = cacheHelper.Get<string>("sessionCookie");
 
-            if (sessionInfo != null)
+            if (string.IsNullOrWhiteSpace(Cookie))
             {
-                sessionCookie = sessionInfo.Cookie ?? "";
+                var sessionInfo = await optionDbContext.Sessions.FirstAsync();
+
+                if (sessionInfo != null)
+                {
+                    sessionCookie = sessionInfo.Cookie ?? "";
+                }
+            }
+            else
+            {
+                sessionCookie = Cookie;
             }
 
             foreach (var cookie in sessionCookie.Split(";"))

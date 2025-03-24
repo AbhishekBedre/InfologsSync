@@ -8,12 +8,15 @@ using Infologs.SessionReader;
 public class FiiDiiActivityJob : IJob
 {
     private readonly ILogger<FiiDiiActivityJob> _logger;
+    private readonly ICacheHelper _cacheHelper;
     private readonly OptionDbContext _optionDbContext;
     private object counter = 0;
 
-    public FiiDiiActivityJob(ILogger<FiiDiiActivityJob> log, OptionDbContext optionDbContext)
+    public FiiDiiActivityJob(ILogger<FiiDiiActivityJob> log, OptionDbContext optionDbContext, 
+        ICacheHelper cacheHelper)
     {
         _logger = log;
+        _cacheHelper = cacheHelper;
         _optionDbContext = optionDbContext;
     }
 
@@ -58,7 +61,7 @@ public class FiiDiiActivityJob : IJob
 
         try
         {
-            DataReader dataReader = new DataReader(_optionDbContext);
+            DataReader dataReader = new DataReader(_optionDbContext, _cacheHelper);
 
             status = await dataReader.ReadFIIDIIActvityAsync();
         }
