@@ -282,23 +282,23 @@ namespace SyncData
                     // Update the RFactor for all stocks                    
                     _ = _optionDbContext.Database.ExecuteSqlRawAsync(@"EXEC [UpdateRelativeFactor];");
 
-                    try
-                    {
-                        using (HttpClient client = new HttpClient())
-                        {
-                            string url = "http://infologs.in/smarttrade/Notification/notify-intraday?notificationType=0";
-                            HttpResponseMessage response = await client.GetAsync(url);
-                            if (response.IsSuccessStatusCode)
-                            {
-                                _logger.LogInformation("notification call success.");
-                            }
-                            else
-                                _logger.LogError("notification call failed.");
-                        }
-                    } catch(Exception ex)
-                    {
-                        _logger.LogError(ex.Message);
-                    }
+                    //try
+                    //{
+                    //    using (HttpClient client = new HttpClient())
+                    //    {
+                    //        string url = "http://infologs.in/smarttrade/Notification/notify-intraday?notificationType=0";
+                    //        HttpResponseMessage response = await client.GetAsync(url);
+                    //        if (response.IsSuccessStatusCode)
+                    //        {
+                    //            _logger.LogInformation("notification call success.");
+                    //        }
+                    //        else
+                    //            _logger.LogError("notification call failed.");
+                    //    }
+                    //} catch(Exception ex)
+                    //{
+                    //    _logger.LogError(ex.Message);
+                    //}
                 }
             }
             catch (Exception ex)
