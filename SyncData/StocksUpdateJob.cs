@@ -280,7 +280,7 @@ namespace SyncData
                     }
 
                     // Update the RFactor for all stocks                    
-                    _ = _optionDbContext.Database.ExecuteSqlRawAsync(@"EXEC [UpdateRelativeFactor];");
+                    await _optionDbContext.Database.ExecuteSqlRawAsync(@"EXEC [UpdateRelativeFactor];");
 
                     //try
                     //{
