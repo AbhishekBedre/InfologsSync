@@ -136,12 +136,12 @@ namespace SyncData
         private async Task<bool> StoreBroderMarketDataInTable(BroderMarketRoot? broderMarketRoot, IJobExecutionContext context)
         {
             try
-            {
-                _logger.LogInformation("Adding data to broder market table.");
-
+            {                
                 if (broderMarketRoot != null
                     && broderMarketRoot.Data != null)
                 {
+                    _logger.LogInformation("Adding data to broder market table.");
+
                     broderMarketRoot.Data.ForEach(f =>
                     {
                         f.EntryDate = DateTime.Now.Date;

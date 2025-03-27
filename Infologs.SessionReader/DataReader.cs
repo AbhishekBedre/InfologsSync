@@ -31,7 +31,7 @@ namespace Infologs.SessionReader
         public async Task<string> ReadSessionAsync()
         {
             StringBuilder finalCookie = new StringBuilder();
-            string url = "https://www.nseindia.com/";
+            string url = "https://www.nseindia.com/market-data/live-market-indices";
 
             using (HttpClient client = new HttpClient(httpClientHandler))
             {
