@@ -34,7 +34,7 @@ namespace SyncData
             // If this is the final call then Insert the stock entry to DailyStockData table. 
             if(context.JobDetail.Key.Name.ToLower() == "stockfinalcall")
             {
-                _ = _optionDbContext.DailyStockData.FromSqlRaw(@"EXEC [ManageDailyStockTable]").ToListAsync();
+                await _optionDbContext.Database.ExecuteSqlRawAsync(@"EXEC [InsertDailyStockData]");
             }
 
             Console.WriteLine($"{nameof(StocksUpdateJob)} completed successfully. Time: - " + context.FireTimeUtc.ToLocalTime());
@@ -281,6 +281,8 @@ namespace SyncData
 
                     // Update the RFactor for all stocks                    
                     await _optionDbContext.Database.ExecuteSqlRawAsync(@"EXEC [UpdateRelativeFactor];");
+
+                    await _optionDbContext.Database.ExecuteSqlRawAsync(@"EXEC [CheckIntradayBlast] '"+ DateTime.Now.Date.ToString("yyyy-MM-dd") +"';");
 
                     //try
                     //{
