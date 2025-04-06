@@ -33,6 +33,15 @@ class Program
                 {
                     #region "SESSION UPDATE JOB"
 
+                    var sessionAtStart = JobKey.Create("sessionAtStart");
+
+                    // 0 0 9-15 ? * MON-FRI
+                    q.AddJob<SessionUpdateJob>(sessionAtStart)
+                        .AddTrigger(trigger =>
+                        {
+                            trigger.ForJob(sessionAtStart).WithSimpleSchedule(s => s.WithIntervalInMinutes(2));
+                        });
+
                     var sessionUpdateJob = JobKey.Create("sessionUpdateJob");
 
                     // 0 0 9-15 ? * MON-FRI
