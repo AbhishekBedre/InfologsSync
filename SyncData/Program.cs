@@ -5,6 +5,7 @@ using Microsoft.Extensions.Hosting;
 using OptionChain;
 using Quartz;
 using SyncData;
+using static Microsoft.EntityFrameworkCore.DbLoggerCategory;
 
 class Program
 {
@@ -44,7 +45,7 @@ class Program
 
                     var sessionUpdateJob = JobKey.Create("sessionUpdateJob");
 
-                    // 0 0 9-15 ? * MON-FRI
+                    // 0 0 9-15 ? * MON-FRI Fires every hour till 8:00 PM
                     q.AddJob<SessionUpdateJob>(sessionUpdateJob)
                         .AddTrigger(trigger =>
                         {
@@ -58,7 +59,7 @@ class Program
 
                     var fiidiiActivityUpdateJob = JobKey.Create("fiidiiActivityUpdateJob");
 
-                    // 0 0 9-15 ? * MON-FRI
+                    // 0 0 9-15 ? * MON-FRI at 8:00 PM
                     q.AddJob<FiiDiiActivityJob>(fiidiiActivityUpdateJob)
                         .AddTrigger(trigger =>
                         {
@@ -70,7 +71,7 @@ class Program
 
                     #region "BANK NIFTY UPDATE JOB"
 
-                    var bankNiftyFirstSession = JobKey.Create("bankNiftyFirstSession");
+                    /*var bankNiftyFirstSession = JobKey.Create("bankNiftyFirstSession");
 
                     q.AddJob<BankNiftyUpdateJob>(bankNiftyFirstSession)
                         .AddTrigger(trigger =>
@@ -101,7 +102,7 @@ class Program
                         .AddTrigger(trigger =>
                         {
                             trigger.ForJob(bankNiftyFinalCall).WithCronSchedule(FINAL_SESSION_EXP); // At 4:00 PM, Monday to Friday
-                        });
+                        });*/
 
                     #endregion
 
@@ -112,8 +113,8 @@ class Program
                     q.AddJob<NiftyUpdateJob>(niftyFirstSession)
                         .AddTrigger(trigger =>
                         {
-                            //trigger.ForJob(niftyFirstSession).WithSimpleSchedule(x=>x.WithIntervalInMinutes(5));
-                            trigger.ForJob(niftyFirstSession).WithCronSchedule(FIRST_SESSION_EXP);
+                        //trigger.ForJob(niftyFirstSession).WithSimpleSchedule(x=>x.WithIntervalInMinutes(5));
+                            trigger.ForJob(niftyFirstSession).WithCronSchedule(FIRST_SESSION_EXP); //every 5 minutes starting at 9:15 AM up to 9:55 AM, Monday to Friday.
                         });
 
                     var niftyMidSession = JobKey.Create("niftyMidSession");
