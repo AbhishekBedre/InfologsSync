@@ -214,6 +214,7 @@ class Program
                         .AddTrigger(trigger =>
                         {
                             trigger.ForJob(indexFinalCall).WithCronSchedule(FINAL_SESSION_EXP); // At 4:00 PM, Monday to Friday
+                            //trigger.ForJob(indexFinalCall).WithSimpleSchedule(s=>s.WithIntervalInMinutes(5)); // At 4:00 PM, Monday to Friday
                         });
 
                     #endregion
