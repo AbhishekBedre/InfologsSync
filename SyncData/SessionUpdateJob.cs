@@ -52,7 +52,7 @@ namespace SyncData
             }
             catch (Exception ex)
             {
-                _logger.LogInformation($"Multiple tried for stock data but not succeed. counter: {counter}");
+                _logger.LogInformation($"Multiple tried to get session update but failed. counter: {counter}");
                 counter = 0;
 
                 //Utility.LogDetails($"{nameof(ExecuteSessionUpdate)} Exception: {ex.Message}");

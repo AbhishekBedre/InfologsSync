@@ -142,13 +142,19 @@ namespace SyncData
                 {
                     _logger.LogInformation("Adding data to broder market table.");
 
-                    broderMarketRoot.Data.ForEach(f =>
+                    // Remove the below indexs, we dont need that.
+                    var indexes = broderMarketRoot.Data.Where(x => x.Key != "FIXED INCOME INDICES" 
+                            && x.Key != "THEMATIC INDICES" 
+                            && x.Key != "STRATEGY INDICES"
+                            && x.Key != "INDICES ELIGIBLE IN DERIVATIVES").ToList();
+
+                    indexes.ForEach(f =>
                     {
                         f.EntryDate = DateTime.Now.Date;
-                        f.Time = context.FireTimeUtc.ToLocalTime().TimeOfDay;                        
+                        f.Time = context.FireTimeUtc.ToLocalTime().TimeOfDay;
                     });
 
-                    await _optionDbContext.BroderMarkets.AddRangeAsync(broderMarketRoot.Data);
+                    await _optionDbContext.BroderMarkets.AddRangeAsync(indexes);
 
                     await _optionDbContext.SaveChangesAsync();
                 }
