@@ -17,3 +17,5 @@
 /aws-session-sync-net8/obj
 /Infologs.SessionReader/bin
 /Infologs.SessionReader/obj
+/aws-upstox-sync/bin
+/aws-upstox-sync/obj

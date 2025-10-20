@@ -1,0 +1,150 @@
+using Microsoft.Extensions.DependencyInjection;
+using Amazon.Lambda.Core;
+using OptionChain;
+using Microsoft.EntityFrameworkCore;
+using System.Net.Http.Headers;
+using OptionChain.Models;
+using System.Text.Json;
+using System.Data;
+
+// Assembly attribute to enable the Lambda function's JSON input to be converted into a .NET class.
+[assembly: LambdaSerializer(typeof(Amazon.Lambda.Serialization.SystemTextJson.DefaultLambdaJsonSerializer))]
+
+namespace aws_session_sync_net8;
+
+public class LambdaInput
+{
+    public string caller { get; set; }
+}
+
+public class Function
+{
+    private readonly UpStoxDbContext _upStoxDbContext;
+    private static readonly HttpClient _httpClient = new HttpClient();
+    private static readonly JsonSerializerOptions _jsonOptions = new() { PropertyNameCaseInsensitive = true };
+
+    // Constructor injection
+    public Function(UpStoxDbContext upStoxDbContext)
+    {
+        _upStoxDbContext = upStoxDbContext;
+    }
+
+    /// <summary>
+    /// A simple function that takes a string and does a ToUpper
+    /// </summary>
+    /// <param name="input">The event for the Lambda function handler to process.</param>
+    /// <param name="context">The ILambdaContext that provides methods for logging and describing the Lambda environment.</param>
+    /// <returns></returns>
+    public string FunctionHandler(LambdaInput input, ILambdaContext context)
+    {
+        string accessToken = GetAccessToken();
+        bool success = GetMarketUpdate(accessToken);
+        return success ? "Market data updated successfully" : "No data to update";
+    }
+
+    public string GetAccessToken()
+    {
+        var authDetail = _upStoxDbContext.AuthDetails.AsNoTracking().Where(x => x.Id == 1).FirstOrDefault();
+
+        return authDetail?.AccessToken ?? throw new Exception("Invalid access token");
+    }
+
+    public bool GetMarketUpdate(string accessToken)
+    {
+        try
+        {
+            _httpClient.DefaultRequestHeaders.Clear();
+            _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+
+            var marketMetaData = _upStoxDbContext.MarketMetaDatas.AsNoTracking().ToList();
+            var stockNameWithKey= marketMetaData.ToDictionary(x => x.Name, x => x.Id);
+
+            var instrumentKey = string.Join(",", marketMetaData.Select(x => x.InstrumentToken));
+
+            // API endpoint (you can dynamically change symbols if needed), NSE_EQ|INE040A01034,NSE_EQ|INE062A01020
+            string url = "https://api.upstox.com/v3/market-quote/ohlc?instrument_key="+ instrumentKey + "&interval=I1";
+
+            // Make GET request
+            HttpResponseMessage response = _httpClient.GetAsync(url).GetAwaiter().GetResult();
+
+            if (!response.IsSuccessStatusCode)
+            {
+                string error = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+                throw new Exception($"Upstox API failed ({response.StatusCode}): {error}");
+            }
+
+            string jsonResponse = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+
+            ApiResponse apiResponse = JsonSerializer.Deserialize<ApiResponse>(jsonResponse, _jsonOptions) ?? new ApiResponse();
+
+            return AddMarketDataEFCore(apiResponse, stockNameWithKey);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error in GetMarketUpdate: {ex.Message}");
+            return false;
+        }
+    }
+
+    public bool AddMarketDataEFCore(ApiResponse apiResponse, Dictionary<string, long> marketMetaDatas)
+    {
+        var prevOhlcList = new List<OHLC>();
+
+        if (apiResponse.Data == null && apiResponse.Status != "success")
+            return false;
+
+        foreach (var item in apiResponse.Data)
+        {
+            var instrumentKey = item.Key;
+            marketMetaDatas.TryGetValue(instrumentKey, out var stockMetaDataId);
+
+            prevOhlcList.Add(new OHLC
+            {
+                StockMetaDataId = stockMetaDataId,
+                Open = item.Value?.PrevOhlc.Open ?? 0,
+                High = item.Value?.PrevOhlc.High ?? 0,
+                Low = item.Value?.PrevOhlc.Low ?? 0,
+                Close = item.Value?.PrevOhlc.Close ?? 0,
+                Volume = item.Value?.PrevOhlc.Volume ?? 0,
+                Timestamp = item.Value?.PrevOhlc.Timestamp ?? 0,
+                LastPrice = item.Value?.PrevOhlc.LastPrice ?? 0
+            });
+        }
+
+        if (prevOhlcList?.Count == 0)
+            return false;
+
+        _upStoxDbContext.OHLCs.AddRange(prevOhlcList);
+        _upStoxDbContext.SaveChanges();
+
+        return true;
+    }
+}
+
+public class LambdaEntryPoint
+{
+    private static IServiceProvider _serviceProvider;
+
+    static LambdaEntryPoint()
+    {
+        var services = new ServiceCollection();
+        ConfigureServices(services);
+        _serviceProvider = services.BuildServiceProvider();
+    }
+
+    private static void ConfigureServices(IServiceCollection services)
+    {
+        services.AddDbContext<UpStoxDbContext>(x => x.UseSqlServer("Data Source=190.92.174.111;Initial Catalog=karmajew_optionchain;User Id=karmajew_sa;Password=Prokyonz@2023;TrustServerCertificate=True"));
+        //services.AddDbContext<UpStoxDbContext>(x => x.UseSqlServer("Data Source=DESKTOP-PKUGHDC\\SQLEXPRESS;Initial Catalog=smarttrader;User Id=sa;Password=Janver@1234;TrustServerCertificate=True;Connect Timeout=200;"));
+        services.AddTransient<Function>();
+    }
+
+    public static string Handler(LambdaInput input, ILambdaContext context)
+    {
+        using (var scope = _serviceProvider.CreateScope())
+        {
+            var function = scope.ServiceProvider.GetRequiredService<Function>();
+            return function.FunctionHandler(input, context);
+        }
+    }
+}

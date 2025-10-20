@@ -11,6 +11,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "aws-session-sync-net8", "aw
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Infologs.SessionReader", "Infologs.SessionReader\Infologs.SessionReader.csproj", "{87260EF1-13E3-4D54-B3BD-A8CC4D08AC10}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "aws-upstox-sync", "aws-upstox-sync\aws-upstox-sync.csproj", "{6FC90BD4-97DF-8CA3-0442-191FD86382FB}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -33,6 +35,10 @@ Global
 		{87260EF1-13E3-4D54-B3BD-A8CC4D08AC10}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{87260EF1-13E3-4D54-B3BD-A8CC4D08AC10}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{87260EF1-13E3-4D54-B3BD-A8CC4D08AC10}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6FC90BD4-97DF-8CA3-0442-191FD86382FB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6FC90BD4-97DF-8CA3-0442-191FD86382FB}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6FC90BD4-97DF-8CA3-0442-191FD86382FB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6FC90BD4-97DF-8CA3-0442-191FD86382FB}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
