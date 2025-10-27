@@ -21,6 +21,6 @@
   "function-subnets": "",
   "function-security-groups": "",
   "tracing-mode": "PassThrough",
-  "environment-variables": "",
+  "environment-variables": "\u0022TZ\u0022=\u0022Asia/Kolkata\u0022",
   "image-tag": ""
 }

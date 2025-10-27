@@ -6,6 +6,8 @@ using System.Net.Http.Headers;
 using OptionChain.Models;
 using System.Text.Json;
 using System.Data;
+using System.Text.Json.Serialization;
+using System.Text;
 
 // Assembly attribute to enable the Lambda function's JSON input to be converted into a .NET class.
 [assembly: LambdaSerializer(typeof(Amazon.Lambda.Serialization.SystemTextJson.DefaultLambdaJsonSerializer))]
@@ -14,7 +16,26 @@ namespace aws_session_sync_net8;
 
 public class LambdaInput
 {
-    public string caller { get; set; }
+    [JsonPropertyName("client_id")]
+    public string ClientId { get; set; }
+
+    [JsonPropertyName("user_id")]
+    public string UserId { get; set; }
+
+    [JsonPropertyName("access_token")]
+    public string AccessToken { get; set; }
+
+    [JsonPropertyName("token_type")]
+    public string TokenType { get; set; }
+
+    [JsonPropertyName("expires_at")]
+    public Int64 ExpiresAt { get; set; }
+
+    [JsonPropertyName("issued_at")]
+    public Int64 IssuedAt { get; set; }
+
+    [JsonPropertyName("message_type")]
+    public string MessageType { get; set; }
 }
 
 public class Function
@@ -37,9 +58,56 @@ public class Function
     /// <returns></returns>
     public string FunctionHandler(LambdaInput input, ILambdaContext context)
     {
-        string accessToken = GetAccessToken();
-        bool success = GetMarketUpdate(accessToken);
-        return success ? "Market data updated successfully" : "No data to update";
+        if (input != null && input.MessageType == "access_token")
+        {
+            var authDetails = _upStoxDbContext.AuthDetails.Where(x => x.Id == 1).FirstOrDefault();
+            if (authDetails != null)
+            {
+                authDetails.AccessToken = input.AccessToken;
+                authDetails.ModifiedDate = DateTime.Now;
+                _upStoxDbContext.SaveChanges();
+                return "Access token updated successfully.";
+            }
+            return "Invalid access token";
+        }
+        else if (input != null && input.MessageType == "request_access_token")
+        {
+            if (RequestForAccessToken())
+            {
+                return "Request sent successfully for access token. Please approve it fro what's app.";
+            }
+            else
+                return "Failed to send the request for access token.";
+        }
+        else
+        {
+            string accessToken = GetAccessToken();
+            bool success = GetMarketUpdate(accessToken);
+            return success ? "Market data updated successfully" : "No data to update";
+        }
+    }
+
+    public bool RequestForAccessToken()
+    {
+        _httpClient.DefaultRequestHeaders.Clear();
+        _httpClient.DefaultRequestHeaders.Add("accept", "application/json");
+
+        string url = "https://api.upstox.com/v3/login/auth/token/request/98671b41-bd9d-4fa7-beea-04ff53e17868";
+
+        var data = new
+        {
+            client_secret = "xh5mi6vity"
+        };
+
+        var json = JsonSerializer.Serialize(data);
+        var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+        var response = _httpClient.PostAsync(url, content).GetAwaiter().GetResult();
+
+        if (response.IsSuccessStatusCode)
+            return true;
+        else
+            return false;
     }
 
     public string GetAccessToken()
@@ -57,12 +125,12 @@ public class Function
             _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
 
             var marketMetaData = _upStoxDbContext.MarketMetaDatas.AsNoTracking().ToList();
-            var stockNameWithKey= marketMetaData.ToDictionary(x => x.Name, x => x.Id);
+            var stockNameWithKey = marketMetaData.ToDictionary(x => x.Name, x => x.Id);
 
             var instrumentKey = string.Join(",", marketMetaData.Select(x => x.InstrumentToken));
 
             // API endpoint (you can dynamically change symbols if needed), NSE_EQ|INE040A01034,NSE_EQ|INE062A01020
-            string url = "https://api.upstox.com/v3/market-quote/ohlc?instrument_key="+ instrumentKey + "&interval=I1";
+            string url = "https://api.upstox.com/v3/market-quote/ohlc?instrument_key=" + instrumentKey + "&interval=I1";
 
             // Make GET request
             HttpResponseMessage response = _httpClient.GetAsync(url).GetAwaiter().GetResult();
@@ -98,17 +166,51 @@ public class Function
             var instrumentKey = item.Key;
             marketMetaDatas.TryGetValue(instrumentKey, out var stockMetaDataId);
 
-            prevOhlcList.Add(new OHLC
+            if(DateTime.Now.Hour == 15 && DateTime.Now.Minute == 30)
             {
-                StockMetaDataId = stockMetaDataId,
-                Open = item.Value?.PrevOhlc.Open ?? 0,
-                High = item.Value?.PrevOhlc.High ?? 0,
-                Low = item.Value?.PrevOhlc.Low ?? 0,
-                Close = item.Value?.PrevOhlc.Close ?? 0,
-                Volume = item.Value?.PrevOhlc.Volume ?? 0,
-                Timestamp = item.Value?.PrevOhlc.Timestamp ?? 0,
-                LastPrice = item.Value?.PrevOhlc.LastPrice ?? 0
-            });
+                prevOhlcList.Add(new OHLC
+                {
+                    StockMetaDataId = stockMetaDataId,
+                    Open = item.Value?.PrevOhlc.Open ?? 0,
+                    High = item.Value?.PrevOhlc.High ?? 0,
+                    Low = item.Value?.PrevOhlc.Low ?? 0,
+                    Close = item.Value?.PrevOhlc.Close ?? 0,
+                    Volume = item.Value?.PrevOhlc.Volume ?? 0,
+                    Timestamp = item.Value?.PrevOhlc.Timestamp ?? 0,
+                    LastPrice = item.Value?.LastPrice ?? 0,
+                    CreatedDate = DateTime.Now.Date,
+                    Time = new TimeSpan(DateTime.Now.Hour, DateTime.Now.Minute - 1, 0)
+                });
+
+                prevOhlcList.Add(new OHLC
+                {
+                    StockMetaDataId = stockMetaDataId,
+                    Open = item.Value?.LiveOhlc.Open ?? 0,
+                    High = item.Value?.LiveOhlc.High ?? 0,
+                    Low = item.Value?.LiveOhlc.Low ?? 0,
+                    Close = item.Value?.LiveOhlc.Close ?? 0,
+                    Volume = item.Value?.LiveOhlc.Volume ?? 0,
+                    Timestamp = item.Value?.LiveOhlc.Timestamp ?? 0,
+                    LastPrice = item.Value?.LastPrice ?? 0,
+                    CreatedDate = DateTime.Now.Date,
+                    Time = new TimeSpan(DateTime.Now.Hour, DateTime.Now.Minute, 0)
+                });
+            } else
+            {
+                prevOhlcList.Add(new OHLC
+                {
+                    StockMetaDataId = stockMetaDataId,
+                    Open = item.Value?.PrevOhlc.Open ?? 0,
+                    High = item.Value?.PrevOhlc.High ?? 0,
+                    Low = item.Value?.PrevOhlc.Low ?? 0,
+                    Close = item.Value?.PrevOhlc.Close ?? 0,
+                    Volume = item.Value?.PrevOhlc.Volume ?? 0,
+                    Timestamp = item.Value?.PrevOhlc.Timestamp ?? 0,
+                    LastPrice = item.Value?.LastPrice ?? 0,
+                    CreatedDate = DateTime.Now.Date,
+                    Time = new TimeSpan(DateTime.Now.Hour, DateTime.Now.Minute - 1, 0)
+                });
+            }
         }
 
         if (prevOhlcList?.Count == 0)
