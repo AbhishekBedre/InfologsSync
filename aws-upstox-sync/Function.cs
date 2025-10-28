@@ -171,20 +171,6 @@ public class Function
                 prevOhlcList.Add(new OHLC
                 {
                     StockMetaDataId = stockMetaDataId,
-                    Open = item.Value?.PrevOhlc.Open ?? 0,
-                    High = item.Value?.PrevOhlc.High ?? 0,
-                    Low = item.Value?.PrevOhlc.Low ?? 0,
-                    Close = item.Value?.PrevOhlc.Close ?? 0,
-                    Volume = item.Value?.PrevOhlc.Volume ?? 0,
-                    Timestamp = item.Value?.PrevOhlc.Timestamp ?? 0,
-                    LastPrice = item.Value?.LastPrice ?? 0,
-                    CreatedDate = DateTime.Now.Date,
-                    Time = new TimeSpan(DateTime.Now.Hour, DateTime.Now.Minute - 1, 0)
-                });
-
-                prevOhlcList.Add(new OHLC
-                {
-                    StockMetaDataId = stockMetaDataId,
                     Open = item.Value?.LiveOhlc.Open ?? 0,
                     High = item.Value?.LiveOhlc.High ?? 0,
                     Low = item.Value?.LiveOhlc.Low ?? 0,
@@ -193,7 +179,7 @@ public class Function
                     Timestamp = item.Value?.LiveOhlc.Timestamp ?? 0,
                     LastPrice = item.Value?.LastPrice ?? 0,
                     CreatedDate = DateTime.Now.Date,
-                    Time = new TimeSpan(DateTime.Now.Hour, DateTime.Now.Minute, 0)
+                    Time = new TimeSpan(DateTime.Now.Hour, DateTime.Now.Minute - 1, 0)
                 });
             } else
             {
