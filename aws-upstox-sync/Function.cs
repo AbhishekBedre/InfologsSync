@@ -165,7 +165,7 @@ public class Function
         var findLastDate = _upStoxDbContext.OHLCs
             .AsNoTracking()
             .Where(x => x.Time == new TimeSpan(15, 29, 0))
-            .OrderBy(x=>x.Id)
+            .OrderByDescending(x=>x.Id)
             .FirstOrDefault();
 
         var previousCloseStockCollection = _upStoxDbContext.OHLCs
