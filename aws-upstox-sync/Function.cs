@@ -161,13 +161,36 @@ public class Function
         if (apiResponse.Data == null && apiResponse.Status != "success")
             return false;
 
+        // Get Previous day lastprice or closing price
+        var findLastDate = _upStoxDbContext.OHLCs
+            .AsNoTracking()
+            .Where(x => x.Time == new TimeSpan(15, 29, 0))
+            .OrderBy(x=>x.Id)
+            .FirstOrDefault();
+
+        var previousCloseStockCollection = _upStoxDbContext.OHLCs
+            .AsNoTracking()
+            .Where(x => x.CreatedDate != null
+                && findLastDate != null
+                && findLastDate.CreatedDate != null
+                && x.CreatedDate.Value.Date == findLastDate.CreatedDate.Value.Date
+                && x.Time == new TimeSpan(15, 29, 0))
+            .ToList(); // this will fetch 235 stocks/index details
+
         foreach (var item in apiResponse.Data)
         {
             var instrumentKey = item.Key;
             marketMetaDatas.TryGetValue(instrumentKey, out var stockMetaDataId);
 
+            // calculate the pChange for each stock based on lastprice or closeprice
+            var stockDetails = previousCloseStockCollection.Where(x => x.StockMetaDataId == stockMetaDataId).FirstOrDefault();
+
+            var previousClose = stockDetails?.LastPrice ?? stockDetails?.Close ?? 0;
+
             if(DateTime.Now.Hour == 15 && DateTime.Now.Minute == 30)
             {
+                var pChange = ((((item.Value?.LastPrice ?? item.Value.LiveOhlc.Close) - previousClose) * 100) / previousClose);
+
                 prevOhlcList.Add(new OHLC
                 {
                     StockMetaDataId = stockMetaDataId,
@@ -179,10 +202,13 @@ public class Function
                     Timestamp = item.Value?.LiveOhlc.Timestamp ?? 0,
                     LastPrice = item.Value?.LastPrice ?? 0,
                     CreatedDate = DateTime.Now.Date,
-                    Time = new TimeSpan(DateTime.Now.Hour, DateTime.Now.Minute - 1, 0)
+                    Time = new TimeSpan(DateTime.Now.Hour, DateTime.Now.Minute - 1, 0),
+                    PChange = pChange
                 });
             } else
             {
+                var pChange = ((((item.Value?.LastPrice ?? item.Value.PrevOhlc.Close) - previousClose) * 100) / previousClose);
+
                 prevOhlcList.Add(new OHLC
                 {
                     StockMetaDataId = stockMetaDataId,
@@ -194,7 +220,8 @@ public class Function
                     Timestamp = item.Value?.PrevOhlc.Timestamp ?? 0,
                     LastPrice = item.Value?.LastPrice ?? 0,
                     CreatedDate = DateTime.Now.Date,
-                    Time = new TimeSpan(DateTime.Now.Hour, DateTime.Now.Minute - 1, 0)
+                    Time = new TimeSpan(DateTime.Now.Hour, DateTime.Now.Minute - 1, 0),
+                    PChange = pChange
                 });
             }
         }
@@ -225,6 +252,7 @@ public class LambdaEntryPoint
         services.AddDbContext<UpStoxDbContext>(x => x.UseSqlServer("Data Source=190.92.174.111;Initial Catalog=karmajew_optionchain;User Id=karmajew_sa;Password=Prokyonz@2023;TrustServerCertificate=True"));
         //services.AddDbContext<UpStoxDbContext>(x => x.UseSqlServer("Data Source=DESKTOP-PKUGHDC\\SQLEXPRESS;Initial Catalog=smarttrader;User Id=sa;Password=Janver@1234;TrustServerCertificate=True;Connect Timeout=200;"));
         services.AddTransient<Function>();
+        services.AddMemoryCache();
     }
 
     public static string Handler(LambdaInput input, ILambdaContext context)
