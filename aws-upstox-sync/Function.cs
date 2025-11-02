@@ -79,11 +79,94 @@ public class Function
             else
                 return "Failed to send the request for access token.";
         }
+        else if(input != null && input.MessageType == "precomputed_data")
+        {
+            return PreComputedData();
+        }
         else
         {
             string accessToken = GetAccessToken();
             bool success = GetMarketUpdate(accessToken);
             return success ? "Market data updated successfully" : "No data to update";
+        }
+    }
+
+    public string PreComputedData()
+    {
+        try
+        {
+            const int NO_OF_DAYS = 10;
+            var preCompuerDataList = new List<PreComputedData>();
+
+            var firstRow = _upStoxDbContext.OHLCs
+                .AsNoTracking()
+                .Where(x => x.StockMetaDataId == 1)
+                .Select(x => x.CreatedDate)
+                .Distinct()
+                .OrderByDescending(x => x)
+                .Take(NO_OF_DAYS)
+                .ToList();
+
+            var equityStocks = _upStoxDbContext.MarketMetaDatas
+                .AsNoTracking()
+                .Select(x => new { x.Id, x.Name })
+                .ToList();
+
+            // Take the last date to filter the values
+            var startDate = firstRow.Last();
+            var previousDate = firstRow.ElementAt(0);
+
+            foreach (var stock in equityStocks)
+            {
+                var ohlcData = _upStoxDbContext.OHLCs
+                    .AsNoTracking()
+                    .Where(x => x.StockMetaDataId == stock.Id && x.CreatedDate >= startDate)
+                    .ToList();
+
+                var daysHigh = ohlcData.Max(x => x.High);
+                var daysLow = ohlcData.Min(x => x.Low);
+                var daysAverageClose = ohlcData.Average(x => x.Close);
+                var daysAverageVolume = (long)ohlcData.Average(x => x.Volume);
+
+                var previousOHLCData = ohlcData.Where(x => x.CreatedDate == previousDate).ToList();
+                var previousDayHigh = previousOHLCData.Max(x => x.High);
+                var previousDayLow = previousOHLCData.Min(x => x.Low);
+                var previousDayClose = previousOHLCData.OrderByDescending(x => x.Time).FirstOrDefault()?.LastPrice ?? 0;
+
+                var precomputedValue = new PreComputedData
+                {
+                    CreatedDate = DateTime.Now.Date,
+                    DaysHigh = daysHigh,
+                    DaysLow = daysLow,
+                    DaysAverageClose = daysAverageClose,
+                    DaysAverageVolume = daysAverageVolume,
+                    DaysAboveVWAPPercentage = 0,
+                    DaysATR = 0,
+                    DaysAverageBodySize = 0,
+                    DaysGreenPercentage = 0,
+                    DaysHighLowRangePercentage = 0,
+                    DaysMedianATR = 0,
+                    DaysStdDevClose = 0,
+                    DaysStdDevVolume = 0,
+                    DaysTrendScore = 0,
+                    DaysVWAP = 0,
+                    StockMetaDataId = stock.Id,
+                    PreviousDayHigh = previousDayHigh,
+                    PreviousDayClose = previousDayClose,
+                    PreviousDayLow = previousDayLow
+                };
+
+                preCompuerDataList.Add(precomputedValue);
+            }
+
+            _upStoxDbContext.PreComputedDatas.AddRange(preCompuerDataList);
+            _upStoxDbContext.SaveChanges();
+
+            return "Precomputed data captured/updated successfully.";
+        }
+        catch (Exception ex)
+        {
+            return ex.Message;
         }
     }
 

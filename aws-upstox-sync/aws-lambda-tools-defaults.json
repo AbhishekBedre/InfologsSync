@@ -10,7 +10,7 @@
   "configuration": "Release",
   "function-runtime": "dotnet8",
   "function-memory-size": 256,
-  "function-timeout": 15,
+  "function-timeout": 60,
   "function-handler": "aws-upstox-sync::aws_session_sync_net8.LambdaEntryPoint::Handler",
   "framework": "net8.0",
   "function-name": "upstox-sync-data",
