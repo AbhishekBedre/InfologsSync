@@ -11,7 +11,7 @@ class Program
 {
     static async Task Main(string[] args)
     {
-        const string SESSION_EXPRESSION = "0 0 9-20 ? * MON-FRI";
+        const string SESSION_EXPRESSION = "0 0/30 9-20 ? * MON-FRI";
         const string FIRST_SESSION_EXP = "0 15-59/5 9 ? * MON-FRI";
         const string MID_SESSION_EXP = "0 0-59/5 10-14 ? * MON-FRI";
         const string LAST_SESSION_EXP = "0 0-30/5 15 ? * MON-FRI";
