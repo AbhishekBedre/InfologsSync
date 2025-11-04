@@ -118,21 +118,30 @@ public class Function
 
             foreach (var stock in equityStocks)
             {
+                decimal daysHigh = 0, daysLow = 0, daysAverageClose = 0, previousDayHigh = 0, previousDayLow = 0, previousDayClose = 0;
+                long daysAverageVolume = 0;
+
                 var ohlcData = _upStoxDbContext.OHLCs
                     .AsNoTracking()
                     .Where(x => x.StockMetaDataId == stock.Id && x.CreatedDate >= startDate)
                     .ToList();
 
-                var daysHigh = ohlcData.Max(x => x.High);
-                var daysLow = ohlcData.Min(x => x.Low);
-                var daysAverageClose = ohlcData.Average(x => x.Close);
-                var daysAverageVolume = (long)ohlcData.Average(x => x.Volume);
+                if (ohlcData.Count > 0)
+                {
+                    daysHigh = ohlcData.Max(x => x.High);
+                    daysLow = ohlcData.Min(x => x.Low);
+                    daysAverageClose = ohlcData.Average(x => x.Close);
+                    daysAverageVolume = (long)ohlcData.Average(x => x.Volume);
+                }
 
                 var previousOHLCData = ohlcData.Where(x => x.CreatedDate == previousDate).ToList();
-                var previousDayHigh = previousOHLCData.Max(x => x.High);
-                var previousDayLow = previousOHLCData.Min(x => x.Low);
-                var previousDayClose = previousOHLCData.OrderByDescending(x => x.Time).FirstOrDefault()?.LastPrice ?? 0;
 
+                if (previousOHLCData.Count > 0)
+                {
+                    previousDayHigh = previousOHLCData.Max(x => x.High);
+                    previousDayLow = previousOHLCData.Min(x => x.Low);
+                    previousDayClose = previousOHLCData.OrderByDescending(x => x.Time).FirstOrDefault()?.LastPrice ?? 0;
+                }
                 var precomputedValue = new PreComputedData
                 {
                     CreatedDate = DateTime.Now.Date,
