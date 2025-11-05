@@ -43,6 +43,11 @@ public class Function
     private readonly UpStoxDbContext _upStoxDbContext;
     private static readonly HttpClient _httpClient = new HttpClient();
     private static readonly JsonSerializerOptions _jsonOptions = new() { PropertyNameCaseInsensitive = true };
+    public static List<DateTime> Holidays = new List<DateTime>
+    {
+        new DateTime(2025, 11, 05, 0, 0, 0, DateTimeKind.Local),
+        new DateTime(2025, 12, 25, 0, 0, 0, DateTimeKind.Local),
+    };
 
     // Constructor injection
     public Function(UpStoxDbContext upStoxDbContext)
@@ -58,6 +63,11 @@ public class Function
     /// <returns></returns>
     public string FunctionHandler(LambdaInput input, ILambdaContext context)
     {
+        if(Holidays.Contains(DateTime.Now.Date))
+        {
+            return "Today is holiday";
+        }
+
         if (input != null && input.MessageType == "access_token")
         {
             var authDetails = _upStoxDbContext.AuthDetails.Where(x => x.Id == 1).FirstOrDefault();
