@@ -107,15 +107,17 @@ public class Function
         {
             const int NO_OF_DAYS = 10;
             var preCompuerDataList = new List<PreComputedData>();
+            var futurePrecomputedDatas = new List<FuturePreComputedData>();
 
-            var firstRow = _upStoxDbContext.OHLCs
+            var allDatesInTable = _upStoxDbContext.OHLCs
                 .AsNoTracking()
                 .Where(x => x.StockMetaDataId == 1)
                 .Select(x => x.CreatedDate)
                 .Distinct()
                 .OrderByDescending(x => x)
-                .Take(NO_OF_DAYS)
                 .ToList();
+
+            var top10Days = allDatesInTable.Take(NO_OF_DAYS).ToList();
 
             var equityStocks = _upStoxDbContext.MarketMetaDatas
                 .AsNoTracking()
@@ -123,14 +125,24 @@ public class Function
                 .ToList();
 
             // Take the last date to filter the values
-            var startDate = firstRow.Last();
-            var previousDate = firstRow.ElementAt(0);
+            var startDate = top10Days.Last();
+            var previousDate = top10Days.ElementAt(0); // Once the End of day this function execute todays date becomes the previousDate
+
+            // Delete the existing records and re-insert the newly calculated.
+            _upStoxDbContext.FuturePreComputedDatas
+                .Where(x => x.CreatedDate == DateTime.Today)
+                .ExecuteDelete();
+
+            _upStoxDbContext.PreComputedDatas
+                .Where(x => x.CreatedDate == DateTime.Today)
+                .ExecuteDelete();
 
             foreach (var stock in equityStocks)
             {
-                decimal daysHigh = 0, daysLow = 0, daysAverageClose = 0, previousDayHigh = 0, previousDayLow = 0, previousDayClose = 0;
+                decimal daysHigh = 0, daysLow = 0, daysAverageClose = 0, previousDayHigh = 0, previousDayLow = 0, previousDayClose = 0, pivotPoint = 0, bottomCP = 0, topCP = 0;
                 long daysAverageVolume = 0;
 
+                // last 10 days data of a specific stock/index
                 var ohlcData = _upStoxDbContext.OHLCs
                     .AsNoTracking()
                     .Where(x => x.StockMetaDataId == stock.Id && x.CreatedDate >= startDate)
@@ -138,46 +150,102 @@ public class Function
 
                 if (ohlcData.Count > 0)
                 {
-                    daysHigh = ohlcData.Max(x => x.High);
-                    daysLow = ohlcData.Min(x => x.Low);
-                    daysAverageClose = ohlcData.Average(x => x.Close);
-                    daysAverageVolume = (long)ohlcData.Average(x => x.Volume);
+                    // calculate the ATR and Median ATR
+                    var orderedOHLCData = ohlcData.OrderBy(x => x.Timestamp).ToList();
+                    List<decimal> trueRanges = new();
+
+                    decimal prevClose = orderedOHLCData[0].Close;
+
+                    foreach (var candle in orderedOHLCData.Skip(1))
+                    {
+                        decimal highLow = candle.High - candle.Low;
+                        decimal highPrevClose = Math.Abs(candle.High - prevClose);
+                        decimal lowPrevClose = Math.Abs(candle.Low - prevClose);
+
+                        decimal trueRange = Math.Max(highLow, Math.Max(highPrevClose, lowPrevClose));
+                        trueRanges.Add(trueRange);
+
+                        prevClose = candle.Close;
+                    }
+
+                    decimal atr = trueRanges.Average();
+
+                    // Median ATR
+                    var ordered = trueRanges.OrderBy(x => x).ToList();
+                    decimal medianAtr = ordered[ordered.Count / 2];
+
+                    if (ohlcData.Count > 0)
+                    {
+                        daysHigh = ohlcData.Max(x => x.High);
+                        daysLow = ohlcData.Min(x => x.Low);
+                        daysAverageClose = ohlcData.Average(x => x.Close);
+                        daysAverageVolume = (long)ohlcData.Average(x => x.Volume);
+                    }
+
+                    var previousOHLCData = ohlcData.Where(x => x.CreatedDate == previousDate).ToList();
+
+                    if (previousOHLCData.Count > 0)
+                    {
+                        previousDayHigh = previousOHLCData.Max(x => x.High);
+                        previousDayLow = previousOHLCData.Min(x => x.Low);
+                        previousDayClose = previousOHLCData.OrderByDescending(x => x.Id).FirstOrDefault()?.LastPrice ?? 0;
+                        pivotPoint = (previousDayHigh + previousDayLow + previousDayClose) / 3;
+                        bottomCP = (previousDayHigh + previousDayLow) / 2;
+                        topCP = (pivotPoint - bottomCP) + pivotPoint;
+
+                        decimal perMovement = (((topCP - bottomCP) / topCP) * 100);
+
+                        // if the perMovement is in the negetive in that case it also means there is strong Negetive movement in the stock which may contine next day.
+                        if (perMovement < 0)
+                            perMovement = perMovement * (-1);
+
+                        var futPreCompData = new FuturePreComputedData
+                        {
+                            PivotPoint = pivotPoint,
+                            BottomCP = bottomCP,
+                            TopCP = topCP,
+                            StockMetaDataId = stock.Id,
+                            TR1 = perMovement < 0.05M ? true : false,
+                            TR2 = (perMovement >= 0.05M && perMovement <= 0.10M) ? true : false,
+                            WasTrendy = false,
+                            CreatedDate = DateTime.Now.Date,
+                            ForDate = GetNextBusinessDay(DateTime.Now, Holidays).Date
+                        };
+
+                        futurePrecomputedDatas.Add(futPreCompData);
+                    }
+
+                    var precomputedValue = new PreComputedData
+                    {
+                        CreatedDate = DateTime.Now.Date,
+                        DaysHigh = daysHigh,
+                        DaysLow = daysLow,
+                        DaysAverageClose = daysAverageClose,
+                        DaysAverageVolume = daysAverageVolume,
+                        DaysAboveVWAPPercentage = 0,
+                        DaysATR = atr,
+                        DaysMedianATR = medianAtr,
+                        DaysAverageBodySize = 0,
+                        DaysGreenPercentage = 0,
+                        DaysHighLowRangePercentage = 0,
+                        DaysStdDevClose = 0,
+                        DaysStdDevVolume = 0,
+                        DaysTrendScore = 0,
+                        DaysVWAP = 0,
+                        StockMetaDataId = stock.Id,
+                        PreviousDayHigh = previousDayHigh,
+                        PreviousDayClose = previousDayClose,
+                        PreviousDayLow = previousDayLow
+                    };
+
+                    preCompuerDataList.Add(precomputedValue);
                 }
-
-                var previousOHLCData = ohlcData.Where(x => x.CreatedDate == previousDate).ToList();
-
-                if (previousOHLCData.Count > 0)
-                {
-                    previousDayHigh = previousOHLCData.Max(x => x.High);
-                    previousDayLow = previousOHLCData.Min(x => x.Low);
-                    previousDayClose = previousOHLCData.OrderByDescending(x => x.Time).FirstOrDefault()?.LastPrice ?? 0;
-                }
-                var precomputedValue = new PreComputedData
-                {
-                    CreatedDate = DateTime.Now.Date,
-                    DaysHigh = daysHigh,
-                    DaysLow = daysLow,
-                    DaysAverageClose = daysAverageClose,
-                    DaysAverageVolume = daysAverageVolume,
-                    DaysAboveVWAPPercentage = 0,
-                    DaysATR = 0,
-                    DaysAverageBodySize = 0,
-                    DaysGreenPercentage = 0,
-                    DaysHighLowRangePercentage = 0,
-                    DaysMedianATR = 0,
-                    DaysStdDevClose = 0,
-                    DaysStdDevVolume = 0,
-                    DaysTrendScore = 0,
-                    DaysVWAP = 0,
-                    StockMetaDataId = stock.Id,
-                    PreviousDayHigh = previousDayHigh,
-                    PreviousDayClose = previousDayClose,
-                    PreviousDayLow = previousDayLow
-                };
-
-                preCompuerDataList.Add(precomputedValue);
             }
 
+            // Delete the last day data from the OHLCs table
+            DeleteLastDayFromOHLC(allDatesInTable.Last().Value);
+
+            _upStoxDbContext.FuturePreComputedDatas.AddRange(futurePrecomputedDatas);
             _upStoxDbContext.PreComputedDatas.AddRange(preCompuerDataList);
             _upStoxDbContext.SaveChanges();
 
@@ -186,6 +254,57 @@ public class Function
         catch (Exception ex)
         {
             return ex.Message;
+        }
+    }
+
+    public static DateTime GetNextBusinessDay(DateTime fromDate, List<DateTime> holidays)
+    {
+        DateTime nextDate = fromDate.AddDays(1);
+
+        // Normalize holiday dates (ignore time)
+        HashSet<DateTime> holidaySet = holidays
+            .Select(h => h.Date)
+            .ToHashSet();
+
+        while (true)
+        {
+            // Skip Saturday & Sunday
+            if (nextDate.DayOfWeek == DayOfWeek.Saturday ||
+                nextDate.DayOfWeek == DayOfWeek.Sunday)
+            {
+                nextDate = nextDate.AddDays(1);
+                continue;
+            }
+
+            // Skip Holidays
+            if (holidaySet.Contains(nextDate.Date))
+            {
+                nextDate = nextDate.AddDays(1);
+                continue;
+            }
+
+            // Valid business day found
+            return nextDate;
+        }
+    }
+
+    public bool DeleteLastDayFromOHLC(DateTime? lastDateInTable)
+    {
+        try
+        {
+            // Fire and forget no need to await.
+            if (lastDateInTable != null)
+            {
+                _ = _upStoxDbContext.OHLCs.Where(x => x.CreatedDate == lastDateInTable).ExecuteDeleteAsync();
+                _ = _upStoxDbContext.FuturePreComputedDatas.Where(x => x.CreatedDate == lastDateInTable).ExecuteDeleteAsync();
+                _ = _upStoxDbContext.PreComputedDatas.Where(x => x.CreatedDate == lastDateInTable).ExecuteDeleteAsync();
+            }
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            return false;
         }
     }
 
