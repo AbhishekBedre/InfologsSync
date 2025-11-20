@@ -470,7 +470,7 @@ public class LambdaEntryPoint
 
     private static void ConfigureServices(IServiceCollection services)
     {
-        services.AddDbContext<UpStoxDbContext>(x => x.UseSqlServer("Data Source=190.92.174.111;Initial Catalog=karmajew_optionchain;User Id=karmajew_sa;Password=Prokyonz@2023;TrustServerCertificate=True"));
+        services.AddDbContext<UpStoxDbContext>(x => x.UseSqlServer("Data Source=190.92.174.111;Initial Catalog=karmajew_optionchain;User Id=karmajew_sa;Password=Prokyonz@2023;TrustServerCertificate=True;MultipleActiveResultSets=True;"));
         //services.AddDbContext<UpStoxDbContext>(x => x.UseSqlServer("Data Source=DESKTOP-PKUGHDC\\SQLEXPRESS;Initial Catalog=smarttrader;User Id=sa;Password=Janver@1234;TrustServerCertificate=True;Connect Timeout=200;"));
         services.AddTransient<Function>();
         services.AddMemoryCache();
