@@ -8,6 +8,7 @@ using System.Text.Json;
 using System.Data;
 using System.Text.Json.Serialization;
 using System.Text;
+using System.Threading.Tasks;
 
 // Assembly attribute to enable the Lambda function's JSON input to be converted into a .NET class.
 [assembly: LambdaSerializer(typeof(Amazon.Lambda.Serialization.SystemTextJson.DefaultLambdaJsonSerializer))]
@@ -366,7 +367,7 @@ public class Function
 
             ApiResponse apiResponse = JsonSerializer.Deserialize<ApiResponse>(jsonResponse, _jsonOptions) ?? new ApiResponse();
 
-            return AddMarketDataEFCore(apiResponse, stockNameWithKey);
+            return AddMarketDataEFCore(apiResponse, stockNameWithKey).GetAwaiter().GetResult();
         }
         catch (Exception ex)
         {
@@ -375,18 +376,30 @@ public class Function
         }
     }
 
-    public bool AddMarketDataEFCore(ApiResponse apiResponse, Dictionary<string, long> marketMetaDatas)
+    public async Task<bool> AddMarketDataEFCore(ApiResponse apiResponse, Dictionary<string, long> marketMetaDatas)
     {
         var prevOhlcList = new List<OHLC>();
 
         if (apiResponse.Data == null && apiResponse.Status != "success")
             return false;
 
+        // Find the latest
+        var preComputedRecord = await _upStoxDbContext.PreComputedDatas
+            .AsNoTracking()
+            .OrderByDescending(x => x.Id)
+            .FirstOrDefaultAsync();
+
+        var allPrecomputedData = await _upStoxDbContext.PreComputedDatas
+            .AsNoTracking()
+            .Where(x => x.CreatedDate == preComputedRecord.CreatedDate)
+            .ToListAsync();
+
+
         // Get Previous day lastprice or closing price
         var findLastDate = _upStoxDbContext.OHLCs
             .AsNoTracking()
             .Where(x => x.Time == new TimeSpan(15, 29, 0))
-            .OrderByDescending(x=>x.Id)
+            .OrderByDescending(x => x.Id)
             .FirstOrDefault();
 
         var previousCloseStockCollection = _upStoxDbContext.OHLCs
@@ -408,9 +421,11 @@ public class Function
 
             var previousClose = stockDetails?.LastPrice ?? stockDetails?.Close ?? 0;
 
-            if(DateTime.Now.Hour == 15 && DateTime.Now.Minute == 30)
+            var stockPrecomputedData = allPrecomputedData.Where(x => x.StockMetaDataId == stockMetaDataId).FirstOrDefault();
+
+            if (DateTime.Now.Hour == 15 && DateTime.Now.Minute == 30)
             {
-                var pChange = ((((item.Value?.LastPrice ?? item.Value.LiveOhlc.Close) - previousClose) * 100) / previousClose);
+                var pChange = previousClose == 0 ? 0 : ((((item.Value?.LastPrice ?? item.Value.LiveOhlc.Close) - previousClose) * 100) / previousClose);
 
                 prevOhlcList.Add(new OHLC
                 {
@@ -424,11 +439,12 @@ public class Function
                     LastPrice = item.Value?.LastPrice ?? 0,
                     CreatedDate = DateTime.Now.Date,
                     Time = new TimeSpan(DateTime.Now.Hour, DateTime.Now.Minute - 1, 0),
-                    PChange = pChange
+                    PChange = pChange,
+                    RFactor = (stockPrecomputedData != null && item.Value != null && item.Value?.LastPrice != 0)  ? ((stockPrecomputedData.DaysHigh - stockPrecomputedData.DaysLow) / item.Value?.LastPrice ?? 1) * 100 : 0
                 });
             } else
             {
-                var pChange = ((((item.Value?.LastPrice ?? item.Value.PrevOhlc.Close) - previousClose) * 100) / previousClose);
+                var pChange = previousClose == 0 ? 0 : ((((item.Value?.LastPrice ?? item.Value.PrevOhlc.Close) - previousClose) * 100) / previousClose);
 
                 prevOhlcList.Add(new OHLC
                 {
@@ -442,7 +458,8 @@ public class Function
                     LastPrice = item.Value?.LastPrice ?? 0,
                     CreatedDate = DateTime.Now.Date,
                     Time = new TimeSpan(DateTime.Now.Hour, DateTime.Now.Minute - 1, 0),
-                    PChange = pChange
+                    PChange = pChange,
+                    RFactor = (stockPrecomputedData != null && item.Value != null && item.Value?.LastPrice != 0) ? ((stockPrecomputedData.DaysHigh - stockPrecomputedData.DaysLow) / item.Value?.LastPrice ?? 1) * 100 : 0
                 });
             }
         }
