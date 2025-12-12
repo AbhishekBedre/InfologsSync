@@ -64,10 +64,7 @@ public class Function
     /// <returns></returns>
     public string FunctionHandler(LambdaInput input, ILambdaContext context)
     {
-        if(Holidays.Contains(DateTime.Now.Date))
-        {
-            return "Today is holiday";
-        }
+        if (Holidays.Contains(DateTime.UtcNow.Date)) return "Today is holiday";
 
         if (input != null && input.MessageType == "access_token")
         {
@@ -90,7 +87,7 @@ public class Function
             else
                 return "Failed to send the request for access token.";
         }
-        else if(input != null && input.MessageType == "precomputed_data")
+        else if (input != null && input.MessageType == "precomputed_data")
         {
             return PreComputedData();
         }
@@ -141,7 +138,7 @@ public class Function
             foreach (var stock in equityStocks)
             {
                 decimal daysHigh = 0, daysLow = 0, daysAverageClose = 0, previousDayHigh = 0, previousDayLow = 0, previousDayClose = 0, pivotPoint = 0, bottomCP = 0, topCP = 0;
-                long daysAverageVolume = 0;
+                long daysAverageVolume = 0, daysStdDevVolume = 0;
 
                 // last 10 days data of a specific stock/index
                 var ohlcData = _upStoxDbContext.OHLCs
@@ -151,11 +148,30 @@ public class Function
 
                 if (ohlcData.Count > 0)
                 {
+                    // calculate the DaysStdDevVolume
+                    var daysVolumes = ohlcData
+                        .Select(x => x.Volume)
+                        .ToList();
+
+                    if (daysVolumes.Count < 2)
+                        daysStdDevVolume = 0;
+
+                    daysStdDevVolume = CalculateDaysStdDevVolume(daysVolumes);
+
                     // calculate the ATR and Median ATR
                     var orderedOHLCData = ohlcData.OrderBy(x => x.Timestamp).ToList();
                     List<decimal> trueRanges = new();
 
                     decimal prevClose = orderedOHLCData[0].Close;
+
+                    // Calculation of DaysStdDevVolume
+                    long mean = 0;
+                    long m2 = 0;
+                    int n = 0;
+
+                    n++;
+                    mean += (orderedOHLCData[0].Volume - mean) / n;
+                    m2 += (orderedOHLCData[0].Volume - mean) * (orderedOHLCData[0].Volume - mean);
 
                     foreach (var candle in orderedOHLCData.Skip(1))
                     {
@@ -167,7 +183,16 @@ public class Function
                         trueRanges.Add(trueRange);
 
                         prevClose = candle.Close;
+
+                        // Calculation of DaysStdDevVolume
+                        n++;
+                        var delta = candle.Volume - mean;
+                        mean += delta / n;
+                        m2 += delta * (candle.Volume - mean);
                     }
+
+                    var variance = m2 / (n - 1);
+                    daysStdDevVolume = (long)Math.Sqrt((long)variance);
 
                     decimal atr = trueRanges.Average();
 
@@ -187,9 +212,11 @@ public class Function
 
                     if (previousOHLCData.Count > 0)
                     {
+                        var prevOHLCData = previousOHLCData.OrderByDescending(x => x.Id).FirstOrDefault();
+
                         previousDayHigh = previousOHLCData.Max(x => x.High);
                         previousDayLow = previousOHLCData.Min(x => x.Low);
-                        previousDayClose = previousOHLCData.OrderByDescending(x => x.Id).FirstOrDefault()?.LastPrice ?? 0;
+                        previousDayClose = prevOHLCData?.LastPrice != null ? prevOHLCData.LastPrice ?? 0 : prevOHLCData?.Close ?? 0;
                         pivotPoint = (previousDayHigh + previousDayLow + previousDayClose) / 3;
                         bottomCP = (previousDayHigh + previousDayLow) / 2;
                         topCP = (pivotPoint - bottomCP) + pivotPoint;
@@ -230,7 +257,7 @@ public class Function
                         DaysGreenPercentage = 0,
                         DaysHighLowRangePercentage = 0,
                         DaysStdDevClose = 0,
-                        DaysStdDevVolume = 0,
+                        DaysStdDevVolume = daysStdDevVolume,
                         DaysTrendScore = 0,
                         DaysVWAP = 0,
                         StockMetaDataId = stock.Id,
@@ -256,6 +283,24 @@ public class Function
         {
             return ex.Message;
         }
+    }
+
+    private long CalculateDaysStdDevVolume(List<long> dailyVolumes)
+    {
+        long mean = 0;
+        long m2 = 0;
+        int n = 0;
+
+        foreach (var volume in dailyVolumes)
+        {
+            n++;
+            var delta = volume - mean;
+            mean += delta / n;
+            m2 += delta * (volume - mean);
+        }
+
+        var variance = m2 / (n - 1);
+        return (long)Math.Sqrt((long)variance);
     }
 
     public static DateTime GetNextBusinessDay(DateTime fromDate, List<DateTime> holidays)
@@ -384,16 +429,14 @@ public class Function
             return false;
 
         // Find the latest
-        var preComputedRecord = await _upStoxDbContext.PreComputedDatas
+        var preComputedRecord = _upStoxDbContext.PreComputedDatas
             .AsNoTracking()
-            .OrderByDescending(x => x.Id)
-            .FirstOrDefaultAsync();
+            .MaxBy(x => x.Id);
 
         var allPrecomputedData = await _upStoxDbContext.PreComputedDatas
             .AsNoTracking()
             .Where(x => x.CreatedDate == preComputedRecord.CreatedDate)
             .ToListAsync();
-
 
         // Get Previous day lastprice or closing price
         var findLastDate = _upStoxDbContext.OHLCs
@@ -440,9 +483,10 @@ public class Function
                     CreatedDate = DateTime.Now.Date,
                     Time = new TimeSpan(DateTime.Now.Hour, DateTime.Now.Minute - 1, 0),
                     PChange = pChange,
-                    RFactor = (stockPrecomputedData != null && item.Value != null && item.Value?.LastPrice != 0)  ? ((stockPrecomputedData.DaysHigh - stockPrecomputedData.DaysLow) / item.Value?.LastPrice ?? 1) * 100 : 0
+                    RFactor = (stockPrecomputedData != null && item.Value != null && item.Value?.LastPrice != 0) ? ((stockPrecomputedData.DaysHigh - stockPrecomputedData.DaysLow) / item.Value?.LastPrice ?? 1) * 100 : 0
                 });
-            } else
+            }
+            else
             {
                 var pChange = previousClose == 0 ? 0 : ((((item.Value?.LastPrice ?? item.Value.PrevOhlc.Close) - previousClose) * 100) / previousClose);
 
