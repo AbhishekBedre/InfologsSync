@@ -8,8 +8,6 @@ using System.Text.Json;
 using System.Data;
 using System.Text.Json.Serialization;
 using System.Text;
-using System.Threading.Tasks;
-using System.Data.SqlTypes;
 
 // Assembly attribute to enable the Lambda function's JSON input to be converted into a .NET class.
 [assembly: LambdaSerializer(typeof(Amazon.Lambda.Serialization.SystemTextJson.DefaultLambdaJsonSerializer))]
@@ -42,7 +40,7 @@ public class LambdaInput
 
 public class Function
 {
-    private readonly UpStoxDbContext _upStoxDbContext;
+    private readonly IDbContextFactory<UpStoxDbContext> _upStoxDbContext;
     private static readonly HttpClient _httpClient = new HttpClient();
     private static readonly JsonSerializerOptions _jsonOptions = new() { PropertyNameCaseInsensitive = true };
     public static List<DateTime> Holidays = new List<DateTime>
@@ -52,7 +50,7 @@ public class Function
     };
 
     // Constructor injection
-    public Function(UpStoxDbContext upStoxDbContext)
+    public Function(IDbContextFactory<UpStoxDbContext> upStoxDbContext)
     {
         _upStoxDbContext = upStoxDbContext;
     }
@@ -69,12 +67,14 @@ public class Function
 
         if (input != null && input.MessageType == "access_token")
         {
-            var authDetails = _upStoxDbContext.AuthDetails.Where(x => x.Id == 1).FirstOrDefault();
+            var db = _upStoxDbContext.CreateDbContext();
+
+            var authDetails = db.AuthDetails.Where(x => x.Id == 1).FirstOrDefault();
             if (authDetails != null)
             {
                 authDetails.AccessToken = input.AccessToken;
                 authDetails.ModifiedDate = DateTime.Now;
-                _upStoxDbContext.SaveChanges();
+                db.SaveChanges();
                 return "Access token updated successfully.";
             }
             return "Invalid access token";
@@ -104,7 +104,19 @@ public class Function
             var marketDataResult = marketTask.Result;
             var optionDataResult = optionTask.Result;
 
-            return marketDataResult.Item1 && optionDataResult.Item1 ? "Market data updated successfully" : string.IsNullOrWhiteSpace(marketDataResult.Item2) ? optionDataResult.Item2 : "The requests are not successful.";
+            string message = "";
+
+            if (marketDataResult.Item1)
+                message += "Market data updated successfully.";
+            else
+                message += marketDataResult.Item2;
+
+            if (optionDataResult.Item1)
+                message += " Option data updated successfully.";
+            else
+                message += optionDataResult.Item2;
+
+            return message;
         }
     }
 
@@ -112,11 +124,13 @@ public class Function
     {
         try
         {
+            var db = _upStoxDbContext.CreateDbContext();
+
             const int NO_OF_DAYS = 10;
             var preCompuerDataList = new List<PreComputedData>();
             var futurePrecomputedDatas = new List<FuturePreComputedData>();
 
-            var allDatesInTable = _upStoxDbContext.OHLCs
+            var allDatesInTable = db.OHLCs
                 .AsNoTracking()
                 .Where(x => x.StockMetaDataId == 1)
                 .Select(x => x.CreatedDate)
@@ -126,7 +140,7 @@ public class Function
 
             var top10Days = allDatesInTable.Take(NO_OF_DAYS).ToList();
 
-            var equityStocks = _upStoxDbContext.MarketMetaDatas
+            var equityStocks = db.MarketMetaDatas
                 .AsNoTracking()
                 .Select(x => new { x.Id, x.Name })
                 .ToList();
@@ -136,11 +150,11 @@ public class Function
             var previousDate = top10Days.ElementAt(0); // Once the End of day this function execute todays date becomes the previousDate
 
             // Delete the existing records and re-insert the newly calculated.
-            _upStoxDbContext.FuturePreComputedDatas
+            db.FuturePreComputedDatas
                 .Where(x => x.CreatedDate == DateTime.Today)
                 .ExecuteDelete();
 
-            _upStoxDbContext.PreComputedDatas
+            db.PreComputedDatas
                 .Where(x => x.CreatedDate == DateTime.Today)
                 .ExecuteDelete();
 
@@ -150,7 +164,7 @@ public class Function
                 long daysAverageVolume = 0, daysStdDevVolume = 0;
 
                 // last 10 days data of a specific stock/index
-                var ohlcData = _upStoxDbContext.OHLCs
+                var ohlcData = db.OHLCs
                     .AsNoTracking()
                     .Where(x => x.StockMetaDataId == stock.Id && x.CreatedDate >= startDate)
                     .ToList();
@@ -282,9 +296,9 @@ public class Function
             // Delete the last day data from the OHLCs table
             //DeleteLastDayFromOHLC(allDatesInTable.Last().Value);
 
-            _upStoxDbContext.FuturePreComputedDatas.AddRange(futurePrecomputedDatas);
-            _upStoxDbContext.PreComputedDatas.AddRange(preCompuerDataList);
-            _upStoxDbContext.SaveChanges();
+            db.FuturePreComputedDatas.AddRange(futurePrecomputedDatas);
+            db.PreComputedDatas.AddRange(preCompuerDataList);
+            db.SaveChanges();
 
             return "Precomputed data captured/updated successfully.";
         }
@@ -347,12 +361,14 @@ public class Function
     {
         try
         {
+            var db = _upStoxDbContext.CreateDbContext();
+
             // Fire and forget no need to await.
             if (lastDateInTable != null)
             {
-                _ = _upStoxDbContext.OHLCs.Where(x => x.CreatedDate == lastDateInTable).ExecuteDeleteAsync();
-                _ = _upStoxDbContext.FuturePreComputedDatas.Where(x => x.CreatedDate == lastDateInTable).ExecuteDeleteAsync();
-                _ = _upStoxDbContext.PreComputedDatas.Where(x => x.CreatedDate == lastDateInTable).ExecuteDeleteAsync();
+                _ = db.OHLCs.Where(x => x.CreatedDate == lastDateInTable).ExecuteDeleteAsync();
+                _ = db.FuturePreComputedDatas.Where(x => x.CreatedDate == lastDateInTable).ExecuteDeleteAsync();
+                _ = db.PreComputedDatas.Where(x => x.CreatedDate == lastDateInTable).ExecuteDeleteAsync();
             }
 
             return true;
@@ -388,7 +404,9 @@ public class Function
 
     public string GetAccessToken()
     {
-        var authDetail = _upStoxDbContext.AuthDetails.AsNoTracking().Where(x => x.Id == 1).FirstOrDefault();
+        var db = _upStoxDbContext.CreateDbContext();
+
+        var authDetail = db.AuthDetails.AsNoTracking().Where(x => x.Id == 1).FirstOrDefault();
 
         return authDetail?.AccessToken ?? throw new Exception("Invalid access token");
     }
@@ -397,10 +415,12 @@ public class Function
     {
         try
         {
+            var db = _upStoxDbContext.CreateDbContext();
+
             _httpClient.DefaultRequestHeaders.Clear();
             _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
 
-            var marketMetaData = await _upStoxDbContext.MarketMetaDatas.AsNoTracking().ToListAsync();
+            var marketMetaData = await db.MarketMetaDatas.AsNoTracking().ToListAsync();
             var stockNameWithKey = marketMetaData.ToDictionary(x => x.Name, x => x.Id);
 
             var instrumentKey = string.Join(",", marketMetaData.Select(x => x.InstrumentToken));
@@ -435,29 +455,30 @@ public class Function
     public async Task<bool> AddMarketDataEFCore(ApiResponse apiResponse, Dictionary<string, long> marketMetaDatas)
     {
         var prevOhlcList = new List<OHLC>();
+        var db = _upStoxDbContext.CreateDbContext();
 
         if (apiResponse.Data == null && apiResponse.Status != "success")
             return false;
 
         // Find the latest
-        var preComputedRecord = await _upStoxDbContext.PreComputedDatas
+        var preComputedRecord = await db.PreComputedDatas
             .AsNoTracking()
             .OrderByDescending(x => x.Id)
             .FirstOrDefaultAsync();
 
-        var allPrecomputedData = await _upStoxDbContext.PreComputedDatas
+        var allPrecomputedData = await db.PreComputedDatas
             .AsNoTracking()
             .Where(x => x.CreatedDate == preComputedRecord.CreatedDate)
             .ToListAsync();
 
         // Get Previous day lastprice or closing price
-        var findLastDate = await _upStoxDbContext.OHLCs
+        var findLastDate = await db.OHLCs
             .AsNoTracking()
             .Where(x => x.Time == new TimeSpan(15, 29, 0))
             .OrderByDescending(x => x.Id)
             .FirstOrDefaultAsync();
 
-        var previousCloseStockCollection = await _upStoxDbContext.OHLCs
+        var previousCloseStockCollection = await db.OHLCs
             .AsNoTracking()
             .Where(x => x.CreatedDate != null
                 && findLastDate != null
@@ -523,8 +544,8 @@ public class Function
         if (prevOhlcList?.Count == 0)
             return false;
 
-        _upStoxDbContext.OHLCs.AddRange(prevOhlcList);
-        _upStoxDbContext.SaveChanges();
+        db.OHLCs.AddRange(prevOhlcList);
+        db.SaveChanges();
 
         return true;
     }
@@ -570,21 +591,36 @@ public class Function
     {
         try
         {
+            var db = _upStoxDbContext.CreateDbContext();
             var optionDatas = new List<OptionExpiryData>();
 
             // Get last entry of the option
 
-            var lastEntrys = await _upStoxDbContext.OptionExpiryDatas
+            var getMaxOfEachStrikePrice = await db.OptionExpiryDatas
                 .AsNoTracking()
                 .Where(x => x.CreatedDate == DateTime.Now.Date)
-                .OrderByDescending(x => x.Id)
+                .GroupBy(g => g.StrikePrice)
+                .Select(s => s.Max(x => x.Id))
                 .ToListAsync();
+
+            var lastEntrys = new List<OptionExpiryData>();
+
+            foreach (var item in getMaxOfEachStrikePrice)
+            {
+                var lastEntry = await db.OptionExpiryDatas
+                    .AsNoTracking()
+                    .Where(x => x.Id == item)
+                    .FirstOrDefaultAsync();
+
+                lastEntrys.Add(lastEntry);
+            }
+
 
             foreach (var item in apiResponse.Data)
             {
                 var lastEntry = lastEntrys.Where(x => x.StrikePrice == item.StrikePrice).FirstOrDefault();
 
-                var prevCallPutDiff = lastEntry?.CallOI ?? 0 - lastEntry?.PutOI ?? 0;
+                var prevCallPutDiff = (lastEntry?.CallOI ?? 0) - (lastEntry?.PutOI ?? 0);
                 var preOpenContractChange = lastEntry?.OpenContractChange ?? 0;
 
                 var currentCallPutDiff = item.CallOptions.MarketData.OI - item.PutOptions.MarketData.OI;
@@ -611,15 +647,15 @@ public class Function
                     SpotPrice = item.UnderlyingSpotPrice,
                     StrikePCR = item.PCR,
                     StrikePrice = item.StrikePrice,
-                    OpenContractChange = (long)currentOpenContractChange,
+                    OpenContractChange = lastEntry == null ? 0 : (long)currentOpenContractChange,
                     StockMetaDataId = 89,
                 };
 
                 optionDatas.Add(optionData);
             }
 
-            await _upStoxDbContext.OptionExpiryDatas.AddRangeAsync(optionDatas);
-            await _upStoxDbContext.SaveChangesAsync();
+            await db.OptionExpiryDatas.AddRangeAsync(optionDatas);
+            await db.SaveChangesAsync();
 
             return new Tuple<bool, string>(true, "Option expiry data saved successfully.");
         }
@@ -643,7 +679,8 @@ public class LambdaEntryPoint
 
     private static void ConfigureServices(IServiceCollection services)
     {
-        services.AddDbContext<UpStoxDbContext>(x => x.UseSqlServer("Data Source=190.92.174.111;Initial Catalog=karmajew_optionchain;User Id=karmajew_sa;Password=Prokyonz@2023;TrustServerCertificate=True;MultipleActiveResultSets=True;"));
+        services.AddDbContextFactory<UpStoxDbContext>(x => 
+            x.UseSqlServer("Data Source=190.92.174.111;Initial Catalog=karmajew_optionchain;User Id=karmajew_sa;Password=Prokyonz@2023;TrustServerCertificate=True;MultipleActiveResultSets=True;"), ServiceLifetime.Transient);
         //services.AddDbContext<UpStoxDbContext>(x => x.UseSqlServer("Data Source=DESKTOP-PKUGHDC\\SQLEXPRESS;Initial Catalog=smarttrader;User Id=sa;Password=Janver@1234;TrustServerCertificate=True;Connect Timeout=200;"));
         services.AddTransient<Function>();
         services.AddMemoryCache();
