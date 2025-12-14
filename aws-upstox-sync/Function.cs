@@ -95,7 +95,7 @@ public class Function
         else
         {
             string accessToken = GetAccessToken();
-            
+
             var marketTask = Task.Run(() => GetMarketUpdate(accessToken));
             var optionTask = Task.Run(() => GetOptionExpiryData(accessToken));
 
@@ -104,7 +104,7 @@ public class Function
             var marketDataResult = marketTask.Result;
             var optionDataResult = optionTask.Result;
 
-            return marketDataResult.Item1 && optionDataResult.Item1  ? "Market data updated successfully" : string.IsNullOrWhiteSpace(marketDataResult.Item2) ? optionDataResult.Item2 : "The requests are not successful.";
+            return marketDataResult.Item1 && optionDataResult.Item1 ? "Market data updated successfully" : string.IsNullOrWhiteSpace(marketDataResult.Item2) ? optionDataResult.Item2 : "The requests are not successful.";
         }
     }
 
@@ -440,9 +440,10 @@ public class Function
             return false;
 
         // Find the latest
-        var preComputedRecord = _upStoxDbContext.PreComputedDatas
+        var preComputedRecord = await _upStoxDbContext.PreComputedDatas
             .AsNoTracking()
-            .MaxBy(x => x.Id);
+            .OrderByDescending(x => x.Id)
+            .FirstOrDefaultAsync();
 
         var allPrecomputedData = await _upStoxDbContext.PreComputedDatas
             .AsNoTracking()
@@ -450,20 +451,20 @@ public class Function
             .ToListAsync();
 
         // Get Previous day lastprice or closing price
-        var findLastDate = _upStoxDbContext.OHLCs
+        var findLastDate = await _upStoxDbContext.OHLCs
             .AsNoTracking()
             .Where(x => x.Time == new TimeSpan(15, 29, 0))
             .OrderByDescending(x => x.Id)
-            .FirstOrDefault();
+            .FirstOrDefaultAsync();
 
-        var previousCloseStockCollection = _upStoxDbContext.OHLCs
+        var previousCloseStockCollection = await _upStoxDbContext.OHLCs
             .AsNoTracking()
             .Where(x => x.CreatedDate != null
                 && findLastDate != null
                 && findLastDate.CreatedDate != null
                 && x.CreatedDate.Value.Date == findLastDate.CreatedDate.Value.Date
                 && x.Time == new TimeSpan(15, 29, 0))
-            .ToList(); // this will fetch 235 stocks/index details
+            .ToListAsync(); // this will fetch 235 stocks/index details
 
         foreach (var item in apiResponse.Data)
         {
@@ -539,7 +540,7 @@ public class Function
             string expiryDate = "2025-12-16";
 
             // pass next expiry data
-            string url = "https://api.upstox.com/v2/option/chain?instrument_key=NSE_INDEX|"+ scriptName +"&expiry_date=" + expiryDate;
+            string url = "https://api.upstox.com/v2/option/chain?instrument_key=NSE_INDEX|" + scriptName + "&expiry_date=" + expiryDate;
 
             // Make GET request
             HttpResponseMessage response = await _httpClient.GetAsync(url);
@@ -573,19 +574,21 @@ public class Function
 
             // Get last entry of the option
 
-            var lastEntry = await _upStoxDbContext.OptionExpiryDatas
+            var lastEntrys = await _upStoxDbContext.OptionExpiryDatas
                 .AsNoTracking()
                 .Where(x => x.CreatedDate == DateTime.Now.Date)
                 .OrderByDescending(x => x.Id)
-                .FirstOrDefaultAsync();
-
-            var prevCallPutDiff = lastEntry?.CallOI ?? 0 - lastEntry?.PutOI ?? 0;
-            var preOpenContractChange = lastEntry?.OpenContractChange ?? 0;
+                .ToListAsync();
 
             foreach (var item in apiResponse.Data)
             {
+                var lastEntry = lastEntrys.Where(x => x.StrikePrice == item.StrikePrice).FirstOrDefault();
+
+                var prevCallPutDiff = lastEntry?.CallOI ?? 0 - lastEntry?.PutOI ?? 0;
+                var preOpenContractChange = lastEntry?.OpenContractChange ?? 0;
+
                 var currentCallPutDiff = item.CallOptions.MarketData.OI - item.PutOptions.MarketData.OI;
-                
+
                 // (-) value means market negetive outlook (high call writting)
                 // (+) value means market positive outlook (high put writting)
                 var currentOpenContractChange = currentCallPutDiff - prevCallPutDiff;
@@ -599,12 +602,12 @@ public class Function
 
                     CreatedDate = DateTime.Now.Date,
                     Expiry = item.Expiry,
-                    
+
                     PutLTP = item.PutOptions.MarketData.LTP,
                     PutOI = (long)item.PutOptions.MarketData.OI,
                     PutPrevOI = (long)item.PutOptions.MarketData.PrevOI,
                     PutVolume = item.PutOptions.MarketData.Volume,
-                    
+
                     SpotPrice = item.UnderlyingSpotPrice,
                     StrikePCR = item.PCR,
                     StrikePrice = item.StrikePrice,
@@ -618,7 +621,7 @@ public class Function
             await _upStoxDbContext.OptionExpiryDatas.AddRangeAsync(optionDatas);
             await _upStoxDbContext.SaveChangesAsync();
 
-            return new Tuple<bool, string>(true,"Option expiry data saved successfully.");
+            return new Tuple<bool, string>(true, "Option expiry data saved successfully.");
         }
         catch (Exception ex)
         {
