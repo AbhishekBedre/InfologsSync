@@ -9,6 +9,7 @@ using System.Data;
 using System.Text.Json.Serialization;
 using System.Text;
 using System.Threading.Tasks;
+using System.Data.SqlTypes;
 
 // Assembly attribute to enable the Lambda function's JSON input to be converted into a .NET class.
 [assembly: LambdaSerializer(typeof(Amazon.Lambda.Serialization.SystemTextJson.DefaultLambdaJsonSerializer))]
@@ -94,8 +95,16 @@ public class Function
         else
         {
             string accessToken = GetAccessToken();
-            bool success = GetMarketUpdate(accessToken);
-            return success ? "Market data updated successfully" : "No data to update";
+            
+            var marketTask = Task.Run(() => GetMarketUpdate(accessToken));
+            var optionTask = Task.Run(() => GetOptionExpiryData(accessToken));
+
+            Task.WaitAll(marketTask, optionTask);
+
+            var marketDataResult = marketTask.Result;
+            var optionDataResult = optionTask.Result;
+
+            return marketDataResult.Item1 && optionDataResult.Item1  ? "Market data updated successfully" : string.IsNullOrWhiteSpace(marketDataResult.Item2) ? optionDataResult.Item2 : "The requests are not successful.";
         }
     }
 
@@ -271,7 +280,7 @@ public class Function
             }
 
             // Delete the last day data from the OHLCs table
-            DeleteLastDayFromOHLC(allDatesInTable.Last().Value);
+            //DeleteLastDayFromOHLC(allDatesInTable.Last().Value);
 
             _upStoxDbContext.FuturePreComputedDatas.AddRange(futurePrecomputedDatas);
             _upStoxDbContext.PreComputedDatas.AddRange(preCompuerDataList);
@@ -384,14 +393,14 @@ public class Function
         return authDetail?.AccessToken ?? throw new Exception("Invalid access token");
     }
 
-    public bool GetMarketUpdate(string accessToken)
+    public async Task<Tuple<bool, string>> GetMarketUpdate(string accessToken)
     {
         try
         {
             _httpClient.DefaultRequestHeaders.Clear();
             _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
 
-            var marketMetaData = _upStoxDbContext.MarketMetaDatas.AsNoTracking().ToList();
+            var marketMetaData = await _upStoxDbContext.MarketMetaDatas.AsNoTracking().ToListAsync();
             var stockNameWithKey = marketMetaData.ToDictionary(x => x.Name, x => x.Id);
 
             var instrumentKey = string.Join(",", marketMetaData.Select(x => x.InstrumentToken));
@@ -400,24 +409,26 @@ public class Function
             string url = "https://api.upstox.com/v3/market-quote/ohlc?instrument_key=" + instrumentKey + "&interval=I1";
 
             // Make GET request
-            HttpResponseMessage response = _httpClient.GetAsync(url).GetAwaiter().GetResult();
+            HttpResponseMessage response = await _httpClient.GetAsync(url);
 
             if (!response.IsSuccessStatusCode)
             {
-                string error = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+                string error = await response.Content.ReadAsStringAsync();
                 throw new Exception($"Upstox API failed ({response.StatusCode}): {error}");
             }
 
-            string jsonResponse = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+            string jsonResponse = await response.Content.ReadAsStringAsync();
 
             ApiResponse apiResponse = JsonSerializer.Deserialize<ApiResponse>(jsonResponse, _jsonOptions) ?? new ApiResponse();
 
-            return AddMarketDataEFCore(apiResponse, stockNameWithKey).GetAwaiter().GetResult();
+            var result = await AddMarketDataEFCore(apiResponse, stockNameWithKey);
+
+            return new Tuple<bool, string>(result, "Success");
         }
         catch (Exception ex)
         {
             Console.WriteLine($"Error in GetMarketUpdate: {ex.Message}");
-            return false;
+            return new Tuple<bool, string>(false, ex.Message);
         }
     }
 
@@ -515,6 +526,104 @@ public class Function
         _upStoxDbContext.SaveChanges();
 
         return true;
+    }
+
+    public async Task<Tuple<bool, string>> GetOptionExpiryData(string accessToken)
+    {
+        try
+        {
+            _httpClient.DefaultRequestHeaders.Clear();
+            _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+
+            string scriptName = "Nifty 50";
+            string expiryDate = "2025-12-16";
+
+            // pass next expiry data
+            string url = "https://api.upstox.com/v2/option/chain?instrument_key=NSE_INDEX|"+ scriptName +"&expiry_date=" + expiryDate;
+
+            // Make GET request
+            HttpResponseMessage response = await _httpClient.GetAsync(url);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                string error = await response.Content.ReadAsStringAsync();
+                throw new Exception($"Upstox option API failed ({response.StatusCode}): {error}");
+            }
+
+            string jsonResponse = await response.Content.ReadAsStringAsync();
+
+            ApiOptionResponse apiResponse = JsonSerializer.Deserialize<ApiOptionResponse>(jsonResponse, _jsonOptions) ?? new ApiOptionResponse();
+
+            var result = await AddOptionExpiryDataToTable(apiResponse);
+
+            return result;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error in GetOptionExpiryData: {ex.Message}");
+            return new Tuple<bool, string>(false, ex.Message);
+        }
+    }
+
+    public async Task<Tuple<bool, string>> AddOptionExpiryDataToTable(ApiOptionResponse apiResponse)
+    {
+        try
+        {
+            var optionDatas = new List<OptionExpiryData>();
+
+            // Get last entry of the option
+
+            var lastEntry = await _upStoxDbContext.OptionExpiryDatas
+                .AsNoTracking()
+                .Where(x => x.CreatedDate == DateTime.Now.Date)
+                .OrderByDescending(x => x.Id)
+                .FirstOrDefaultAsync();
+
+            var prevCallPutDiff = lastEntry?.CallOI ?? 0 - lastEntry?.PutOI ?? 0;
+            var preOpenContractChange = lastEntry?.OpenContractChange ?? 0;
+
+            foreach (var item in apiResponse.Data)
+            {
+                var currentCallPutDiff = item.CallOptions.MarketData.OI - item.PutOptions.MarketData.OI;
+                
+                // (-) value means market negetive outlook (high call writting)
+                // (+) value means market positive outlook (high put writting)
+                var currentOpenContractChange = currentCallPutDiff - prevCallPutDiff;
+
+                var optionData = new OptionExpiryData
+                {
+                    CallLTP = item.CallOptions.MarketData.LTP,
+                    CallOI = (long)item.CallOptions.MarketData.OI,
+                    CallPrevOI = (long)item.CallOptions.MarketData.PrevOI,
+                    CallVolume = item.CallOptions.MarketData.Volume,
+
+                    CreatedDate = DateTime.Now.Date,
+                    Expiry = item.Expiry,
+                    
+                    PutLTP = item.PutOptions.MarketData.LTP,
+                    PutOI = (long)item.PutOptions.MarketData.OI,
+                    PutPrevOI = (long)item.PutOptions.MarketData.PrevOI,
+                    PutVolume = item.PutOptions.MarketData.Volume,
+                    
+                    SpotPrice = item.UnderlyingSpotPrice,
+                    StrikePCR = item.PCR,
+                    StrikePrice = item.StrikePrice,
+                    OpenContractChange = (long)currentOpenContractChange,
+                    StockMetaDataId = 89,
+                };
+
+                optionDatas.Add(optionData);
+            }
+
+            await _upStoxDbContext.OptionExpiryDatas.AddRangeAsync(optionDatas);
+            await _upStoxDbContext.SaveChangesAsync();
+
+            return new Tuple<bool, string>(true,"Option expiry data saved successfully.");
+        }
+        catch (Exception ex)
+        {
+            return new Tuple<bool, string>(false, ex.Message);
+        }
     }
 }
 
