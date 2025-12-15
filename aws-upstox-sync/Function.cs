@@ -646,12 +646,12 @@ public class Function
 
                 TotOICE = totOICE,
                 TotOIPE = totOIPE,
-                
+
                 TotVolCE = totVolCE,
                 TotVolPE = totVolPE,
-                
+
                 CEPEOIDiff = cEPEOIDiff,    // (+) means market is createing support of call unwinding, (-) means market is createing reisitence or put unwinding
-                CEPEVolDiff = cEPEVolDiff, 
+                CEPEVolDiff = cEPEVolDiff,
 
                 CEPEOIPrevDiff = cEPEOIPrevDiff,
                 CEPEVolPrevDiff = cEPEVolPrevDiff
@@ -685,7 +685,7 @@ public class LambdaEntryPoint
 
     private static void ConfigureServices(IServiceCollection services)
     {
-        services.AddDbContextFactory<UpStoxDbContext>(x => 
+        services.AddDbContextFactory<UpStoxDbContext>(x =>
             x.UseSqlServer("Data Source=190.92.174.111;Initial Catalog=karmajew_optionchain;User Id=karmajew_sa;Password=Prokyonz@2023;TrustServerCertificate=True;MultipleActiveResultSets=True;"), ServiceLifetime.Transient);
         //services.AddDbContext<UpStoxDbContext>(x => x.UseSqlServer("Data Source=DESKTOP-PKUGHDC\\SQLEXPRESS;Initial Catalog=smarttrader;User Id=sa;Password=Janver@1234;TrustServerCertificate=True;Connect Timeout=200;"));
         services.AddTransient<Function>();
