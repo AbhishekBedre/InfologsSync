@@ -559,7 +559,7 @@ public class Function
             _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
 
             string scriptName = "Nifty 50";
-            string expiryDate = "2025-12-16"; // Need to change every Tuesday EOD
+            string expiryDate = "2025-12-23"; // Need to change every Tuesday EOD
 
             // pass next expiry data
             string url = "https://api.upstox.com/v2/option/chain?instrument_key=NSE_INDEX|" + scriptName + "&expiry_date=" + expiryDate;
