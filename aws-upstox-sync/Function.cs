@@ -9,6 +9,7 @@ using System.Data;
 using System.Text.Json.Serialization;
 using System.Text;
 using OptionChain.Migrations.UpStoxDb;
+using Microsoft.Extensions.Logging.Abstractions;
 
 // Assembly attribute to enable the Lambda function's JSON input to be converted into a .NET class.
 [assembly: LambdaSerializer(typeof(Amazon.Lambda.Serialization.SystemTextJson.DefaultLambdaJsonSerializer))]
@@ -295,7 +296,7 @@ public class Function
             }
 
             // Delete the last day data from the OHLCs table
-            //DeleteLastDayFromOHLC(allDatesInTable.Last().Value);
+            DeleteLastDayFromOHLC(allDatesInTable?.Count > 0 ? allDatesInTable.Last().Value : null);
 
             db.FuturePreComputedDatas.AddRange(futurePrecomputedDatas);
             db.PreComputedDatas.AddRange(preCompuerDataList);
@@ -559,7 +560,7 @@ public class Function
             _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
 
             string scriptName = "Nifty 50";
-            string expiryDate = "2025-12-23"; // Need to change every Tuesday EOD
+            string expiryDate = "2025-12-30"; // Need to change every Tuesday EOD, read the expiry from the table so you don't need to update code everytime.
 
             // pass next expiry data
             string url = "https://api.upstox.com/v2/option/chain?instrument_key=NSE_INDEX|" + scriptName + "&expiry_date=" + expiryDate;
