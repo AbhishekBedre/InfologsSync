@@ -371,6 +371,9 @@ public class Function
                 _ = db.OHLCs.Where(x => x.CreatedDate == lastDateInTable).ExecuteDeleteAsync();
                 _ = db.FuturePreComputedDatas.Where(x => x.CreatedDate == lastDateInTable).ExecuteDeleteAsync();
                 _ = db.PreComputedDatas.Where(x => x.CreatedDate == lastDateInTable).ExecuteDeleteAsync();
+                //_ = db.OptionExpiryDatas.Where(x => x.CreatedDate == lastDateInTable).ExecuteDeleteAsync();
+                //_ = db.optionExpirySummaries.Where(x => x.EntryDate == lastDateInTable).ExecuteDeleteAsync();
+
             }
 
             return true;
@@ -489,6 +492,12 @@ public class Function
                 && x.Time == new TimeSpan(15, 29, 0))
             .ToListAsync(); // this will fetch 235 stocks/index details
 
+        // Find all the breakout stocks of today
+        var breakOutDownStocks = await db.BreakOutDownStocks
+            .AsNoTracking()
+            .Where(x => x.CreatedDate == DateTime.Now.Date)
+            .ToListAsync();
+
         foreach (var item in apiResponse.Data)
         {
             var instrumentKey = item.Key;
@@ -548,6 +557,17 @@ public class Function
                         : 0
                 });
             }
+
+            // Check if the current stock is already in breakoutdown stocks list skip that 
+            // check if the lastprice, closeprice is > (item.Value?.LastPrice ?? item.Value.LiveOhlc.Close)
+            // add it in breakoutdown stock list
+            await CheckBreakOutDownStockAndAddToTable(db, breakOutDownStocks,
+                    stockMetaDataId,
+                    prevOhlcList.Last().LastPrice ?? prevOhlcList.Last().Close,
+                    Convert.ToDecimal(stockPrecomputedData?.PreviousDayHigh),
+                    Convert.ToDecimal(stockPrecomputedData?.PreviousDayLow),
+                    Convert.ToDecimal(prevOhlcList.Last().PChange),
+                    prevOhlcList.Last().Time);
         }
 
         if (prevOhlcList?.Count == 0)
@@ -557,6 +577,36 @@ public class Function
         db.SaveChanges();
 
         return true;
+    }
+
+    private async Task CheckBreakOutDownStockAndAddToTable(UpStoxDbContext db, List<BreakOutDownStock> breakOutDownStocks, 
+        long stockMetaDataId,
+        decimal lastPrice,
+        decimal daysHigh,
+        decimal daysLow,
+        decimal pChange,
+        TimeSpan? timeSpan)
+    {
+        try
+        {
+            if (!breakOutDownStocks.Select(x=>x.StockMetaDataId).Contains(stockMetaDataId) && (lastPrice > daysHigh || lastPrice < daysLow))
+            {
+                var stockAlert = new BreakOutDownStock
+                {
+                    LastPrice = lastPrice,
+                    StockMetaDataId = stockMetaDataId,
+                    Time = timeSpan,
+                    Trend = (lastPrice > daysHigh) ? true : false,
+                    PChange = pChange,
+                    CreatedDate = DateTime.Now.Date
+                };
+
+                await db.BreakOutDownStocks.AddAsync(stockAlert);
+            }
+        }
+        catch (Exception)
+        {
+        }
     }
 
     public async Task<Tuple<bool, string>> GetOptionExpiryData(string accessToken)
