@@ -518,7 +518,9 @@ public class Function
                     CreatedDate = DateTime.Now.Date,
                     Time = new TimeSpan(DateTime.Now.Hour, DateTime.Now.Minute - 1, 0),
                     PChange = pChange,
-                    RFactor = (stockPrecomputedData != null && item.Value != null && item.Value?.LastPrice != 0) ? ((stockPrecomputedData.DaysHigh - stockPrecomputedData.DaysLow) / item.Value?.LastPrice ?? 1) * 100 : 0
+                    RFactor = (stockPrecomputedData != null && item.Value != null && item.Value?.LastPrice != 0)
+                        ? GenerateRFactor(Convert.ToDecimal(stockPrecomputedData.DaysHigh), Convert.ToDecimal(stockPrecomputedData.DaysLow), Convert.ToDecimal(item.Value?.LastPrice))
+                        : 0
                 });
             }
             else
@@ -538,7 +540,12 @@ public class Function
                     CreatedDate = DateTime.Now.Date,
                     Time = new TimeSpan(DateTime.Now.Hour, DateTime.Now.Minute - 1, 0),
                     PChange = pChange,
-                    RFactor = (stockPrecomputedData != null && item.Value != null && item.Value?.LastPrice != 0) ? ((stockPrecomputedData.DaysHigh - stockPrecomputedData.DaysLow) / item.Value?.LastPrice ?? 1) * 100 : 0
+                    /*RFactor = (stockPrecomputedData != null && item.Value != null && item.Value?.LastPrice != 0) 
+                        ? ((stockPrecomputedData.DaysHigh - stockPrecomputedData.DaysLow) / item.Value?.LastPrice ?? 1) * 100 
+                        : 0*/
+                    RFactor = (stockPrecomputedData != null && item.Value != null && item.Value?.LastPrice != 0)
+                        ? GenerateRFactor(Convert.ToDecimal(stockPrecomputedData.DaysHigh), Convert.ToDecimal(stockPrecomputedData.DaysLow), Convert.ToDecimal(item.Value?.LastPrice))
+                        : 0
                 });
             }
         }
@@ -587,6 +594,20 @@ public class Function
             Console.WriteLine($"Error in GetOptionExpiryData: {ex.Message}");
             return new Tuple<bool, string>(false, ex.Message);
         }
+    }
+
+    private decimal GenerateRFactor(decimal high, decimal low, decimal currentPrice)
+    {
+        decimal rangeFactor = ((high - low) / low) * 100;
+        decimal expanceFactor = 0;
+        
+        if (currentPrice > high)
+            expanceFactor = ((currentPrice - high) / high) * 100;
+        else if (currentPrice < low)
+            expanceFactor = ((low - currentPrice) / low) * 100;
+
+        decimal rFactor = rangeFactor + expanceFactor;
+        return rFactor;
     }
 
     public async Task<Tuple<bool, string>> AddOptionExpiryDataToTable(ApiOptionResponse apiResponse)
