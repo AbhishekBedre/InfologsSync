@@ -561,13 +561,13 @@ public class Function
             // Check if the current stock is already in breakoutdown stocks list skip that 
             // check if the lastprice, closeprice is > (item.Value?.LastPrice ?? item.Value.LiveOhlc.Close)
             // add it in breakoutdown stock list
-            await CheckBreakOutDownStockAndAddToTable(db, breakOutDownStocks,
+            /*await CheckBreakOutDownStockAndAddToTable(db, breakOutDownStocks,
                     stockMetaDataId,
                     prevOhlcList.Last().LastPrice ?? prevOhlcList.Last().Close,
                     Convert.ToDecimal(stockPrecomputedData?.PreviousDayHigh),
                     Convert.ToDecimal(stockPrecomputedData?.PreviousDayLow),
                     Convert.ToDecimal(prevOhlcList.Last().PChange),
-                    prevOhlcList.Last().Time);
+                    prevOhlcList.Last().Time);*/
         }
 
         if (prevOhlcList?.Count == 0)
