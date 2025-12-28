@@ -8,8 +8,6 @@ using System.Text.Json;
 using System.Data;
 using System.Text.Json.Serialization;
 using System.Text;
-using OptionChain.Migrations.UpStoxDb;
-using Microsoft.Extensions.Logging.Abstractions;
 
 // Assembly attribute to enable the Lambda function's JSON input to be converted into a .NET class.
 [assembly: LambdaSerializer(typeof(Amazon.Lambda.Serialization.SystemTextJson.DefaultLambdaJsonSerializer))]
@@ -118,7 +116,31 @@ public class Function
             else
                 message += optionDataResult.Item2;
 
+            // Fire and forget
+            // This will tell the website to take any action on the updated data
+            // May be you can scan for the breakout or breakdown stocks and popup a  message to end user.
+            _ = NotifyToWebsite("https://infologs.in/Notification/data-update");
+
             return message;
+        }
+    }
+
+    private async Task<bool> NotifyToWebsite(string url)
+    {
+        try
+        {
+            _httpClient.DefaultRequestHeaders.Clear();
+
+            var response = await _httpClient.GetAsync(url);
+
+            if (response.IsSuccessStatusCode)
+                return true;
+            else
+                return false;
+        }
+        catch
+        {
+            return false;
         }
     }
 
