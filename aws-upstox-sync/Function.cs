@@ -8,6 +8,7 @@ using System.Text.Json;
 using System.Data;
 using System.Text.Json.Serialization;
 using System.Text;
+using OptionChain.Migrations.UpStoxDb;
 
 // Assembly attribute to enable the Lambda function's JSON input to be converted into a .NET class.
 [assembly: LambdaSerializer(typeof(Amazon.Lambda.Serialization.SystemTextJson.DefaultLambdaJsonSerializer))]
@@ -550,7 +551,7 @@ public class Function
                     Time = new TimeSpan(DateTime.Now.Hour, DateTime.Now.Minute - 1, 0),
                     PChange = pChange,
                     RFactor = (stockPrecomputedData != null && item.Value != null && item.Value?.LastPrice != 0)
-                        ? GenerateRFactor(Convert.ToDecimal(stockPrecomputedData.DaysHigh), Convert.ToDecimal(stockPrecomputedData.DaysLow), Convert.ToDecimal(item.Value?.LastPrice))
+                        ? GenerateRFactor(stockPrecomputedData, Convert.ToDecimal(item.Value?.LastPrice))
                         : 0
                 });
             }
@@ -575,7 +576,7 @@ public class Function
                         ? ((stockPrecomputedData.DaysHigh - stockPrecomputedData.DaysLow) / item.Value?.LastPrice ?? 1) * 100 
                         : 0*/
                     RFactor = (stockPrecomputedData != null && item.Value != null && item.Value?.LastPrice != 0)
-                        ? GenerateRFactor(Convert.ToDecimal(stockPrecomputedData.DaysHigh), Convert.ToDecimal(stockPrecomputedData.DaysLow), Convert.ToDecimal(item.Value?.LastPrice))
+                        ? GenerateRFactor(stockPrecomputedData, Convert.ToDecimal(item.Value?.LastPrice))
                         : 0
                 });
             }
@@ -639,7 +640,7 @@ public class Function
             _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
 
             string scriptName = "Nifty 50";
-            string expiryDate = "2025-12-30"; // Need to change every Tuesday EOD, read the expiry from the table so you don't need to update code everytime.
+            string expiryDate = "2026-01-06"; // Need to change every Tuesday EOD, read the expiry from the table so you don't need to update code everytime.
 
             // pass next expiry data
             string url = "https://api.upstox.com/v2/option/chain?instrument_key=NSE_INDEX|" + scriptName + "&expiry_date=" + expiryDate;
@@ -668,17 +669,68 @@ public class Function
         }
     }
 
-    private decimal GenerateRFactor(decimal high, decimal low, decimal currentPrice)
+    /// <summary>
+    /// Get the Days High and Low range of the stock
+    /// Calculate the mid point of the stock
+    /// Calculate Previous Day High Low
+    /// Calculate Days High Low
+    /// Calcualte RFactor
+    /// 
+    /// Scenarios
+    /// 
+    /// 1. Current Price is with-in the Previous Day High and Low = Hit with 50% Penalty (-50% of rangeFactor)
+    /// 1. Current Price is with-in days High or Low = Hit more with 25% Penalty (-25% of range factor)
+    /// 
+    /// 2. Current Price is crossed previsou day high or low = Appriciate with 50% (50% of rangeFactor)
+    /// 2. Current Price is with-in days High low Low = NO PENALTY as price crossed previous days high or low
+    /// 
+    /// 3. Current Price is crossed previsou day high or low = Appriciate with 50% (50% of rangeFactor)
+    /// 3. Current Price is crossed days High or Low = Appriciate with 25% (25% of range factor)
+    /// 
+    /// </summary>
+    /// <param name="high"></param>
+    /// <param name="low"></param>
+    /// <param name="currentPrice"></param>
+    /// <returns></returns>
+    private decimal GenerateRFactor(PreComputedData stockPrecomputedData, decimal currentPrice)
     {
-        decimal rangeFactor = ((high - low) / low) * 100;
-        decimal expanceFactor = 0;
-        
-        if (currentPrice > high)
-            expanceFactor = ((currentPrice - high) / high) * 100;
-        else if (currentPrice < low)
-            expanceFactor = ((low - currentPrice) / low) * 100;
+        decimal daysHigh = Convert.ToDecimal(stockPrecomputedData.DaysHigh);
+        decimal daysLow = Convert.ToDecimal(stockPrecomputedData.DaysLow);
 
-        decimal rFactor = rangeFactor + expanceFactor;
+        decimal preDayHigh = Convert.ToDecimal(stockPrecomputedData.PreviousDayHigh);
+        decimal preDayLow = Convert.ToDecimal(stockPrecomputedData.PreviousDayLow);
+
+        decimal rangeFactor = ((daysHigh - daysLow) / daysLow) * 100;
+        
+        decimal mid = (daysHigh + daysLow) / 2m;
+        decimal edgeFactor =
+            Math.Abs(currentPrice - mid) / (daysHigh - daysLow) * 2m; // 0..1..>1
+
+        decimal preDayExpanceFactor = 0;
+        decimal daysExpanceFactor = 0;
+        bool isPrevDayHighLowCrossed = false;
+        decimal finalFactor = (rangeFactor * edgeFactor);
+
+        // Calculate Previous Day ExpanceFactor
+        if (currentPrice > preDayHigh || currentPrice < preDayLow)
+        {
+            preDayExpanceFactor = ((finalFactor * 50) / 100);
+            isPrevDayHighLowCrossed = true;
+        }
+        else
+            preDayExpanceFactor = ((finalFactor * 50) / 100) * -1; // hit with 50% panelty because stock is with-in the PDH and PDL
+
+        // Calculate Previous Days ExpanceFactor
+        if (currentPrice > daysHigh || currentPrice < daysLow)
+            daysExpanceFactor = ((finalFactor * 50) / 100);
+        else
+        {
+            if (!isPrevDayHighLowCrossed)
+                daysExpanceFactor = ((finalFactor * 25) / 100) * -1; // hit with 25% panelty because stock is with-in the days High and days low
+        }
+
+        decimal rFactor = finalFactor + preDayExpanceFactor + daysExpanceFactor;
+
         return rFactor;
     }
 
